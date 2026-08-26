@@ -230,6 +230,35 @@ The parlay page still has a week selector for looking back at earlier weeks; it
 just opens on the current one. To change the schedule, edit the constants at
 the top of `src/lib/week.ts`.
 
+### Who places the parlay
+Whoever scored **lowest** in week N places week N+1's ticket. Week 1 has nobody
+to punish yet, so it is set with `LEAGUE_FIRST_PLACER` (a username). From then
+on it works itself out from Sleeper's final scores, and the parlay page names
+the person and says why — *"came last in week 3 with 84.20"*.
+
+This needs each member linked to their Sleeper account, under
+**Commissioner → Sleeper accounts**. Do it once.
+
+The link is stored as Sleeper's **`user_id`**, not a name. Sleeper exposes
+three things per league member:
+
+| Field | Changes? |
+| --- | --- |
+| `user_id` | **Never.** This is what we store. |
+| `display_name` (the @handle) | Rarely, but it can |
+| `metadata.team_name` | Constantly |
+
+So renaming your team, or even your handle, doesn't break anything.
+
+### Live odds for parlay legs
+The parlay page lists live NFL markets from **Polymarket's public API** — no
+account, no key — with prices converted from probabilities to American odds.
+Picking a side fills in the leg and its price; you can still edit either.
+Markets that have already resolved are filtered out.
+
+If Polymarket is unreachable the section says so and you type legs in by hand,
+same as before.
+
 ### The stake
 Each week's parlay is a flat **$10 ticket** for the league — not a per-person
 buy-in, and there is no pot. It resets every week; a new ticket opens
@@ -274,6 +303,8 @@ src/
     ledger.ts          netting out who owes who            <- unit tested
     crypto.ts          password hashing, session tokens    <- unit tested
     sleeper.ts         read-only Sleeper API client        <- unit tested
+    polymarket.ts      live odds for parlay legs            <- unit tested
+    placer.ts          who has to place the parlay
     lines.ts           generates the betting board          <- unit tested
     auth.ts            login, session cookies
     db.ts              Postgres connection + query helper

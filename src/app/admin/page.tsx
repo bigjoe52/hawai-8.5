@@ -8,6 +8,7 @@ import {
   listMembers,
 } from "@/lib/queries.ts";
 import { currentWeek, normaliseWeek } from "@/lib/week.ts";
+import { getLeagueUsers } from "@/lib/sleeper.ts";
 import { formatCents, formatAmerican } from "@/lib/odds.ts";
 import {
   gradeLegAction,
@@ -15,6 +16,7 @@ import {
   setStakeAction,
   settleSideBetAction,
   autoSettleAction,
+  linkSleeperAction,
 } from "@/lib/actions.ts";
 import {
   Nav,
@@ -48,10 +50,14 @@ export default async function AdminPage({
   const ctx = await currentWeek();
   const week = normaliseWeek(params.week, ctx.week);
 
-  const [parlay, unsettled, members] = await Promise.all([
+  const leagueId = process.env.SLEEPER_LEAGUE_ID;
+  const [parlay, unsettled, members, sleeperUsers] = await Promise.all([
     getOrCreateParlay(ctx.season, week),
     listUnsettledBets(),
     listMembers(),
+    leagueId
+      ? getLeagueUsers(leagueId)
+      : Promise.resolve({ ok: false as const, error: "SLEEPER_LEAGUE_ID isn't set." }),
   ]);
 
   return (
@@ -203,25 +209,53 @@ export default async function AdminPage({
           )}
         </Card>
 
-        <Card title="League members">
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {members.map((m) => (
-              <li
-                key={m.id}
-                className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm"
-              >
-                <span className="text-white/80">{m.displayName}</span>
-                <span className="text-xs text-white/40">
-                  {m.username}
-                  {m.isAdmin && (
-                    <span className="ml-2 text-sunset-300">commissioner</span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
+        <Card
+          title="Sleeper accounts"
+          subtitle="Link each member to their Sleeper account. Do this once — it uses Sleeper's permanent user id, so it survives team and handle changes."
+        >
+          {!sleeperUsers.ok ? (
+            <p className="text-sm text-white/50">
+              Can&apos;t reach Sleeper to list accounts. {sleeperUsers.error}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {members.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex flex-wrap items-center gap-3 rounded-md border border-white/10 px-3 py-2"
+                >
+                  <span className="min-w-32 flex-1 text-sm text-white/80">
+                    {m.displayName}
+                    <span className="ml-2 text-xs text-white/30">{m.username}</span>
+                    {m.isAdmin && (
+                      <span className="ml-2 text-xs text-sunset-300">commissioner</span>
+                    )}
+                  </span>
+                  <form action={linkSleeperAction} className="flex items-center gap-2">
+                    <input type="hidden" name="userId" value={m.id} />
+                    <select
+                      name="sleeperUserId"
+                      defaultValue={m.sleeperUserId ?? ""}
+                      className={`${inputClass} w-56 py-1.5`}
+                    >
+                      <option value="">— not linked —</option>
+                      {sleeperUsers.data.map((su) => (
+                        <option key={su.userId} value={su.userId}>
+                          @{su.displayName}
+                          {su.teamName ? ` · ${su.teamName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="submit" className={ghostButtonClass}>
+                      Link
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="mt-3 text-xs text-white/40">
-            Members are managed with the seed script — see the README.
+            Members themselves are managed with the seed script — see the README.
           </p>
         </Card>
       </Page>

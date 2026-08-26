@@ -454,3 +454,25 @@ export async function autoSettleAction(): Promise<void> {
   revalidatePath("/ledger");
   revalidatePath("/admin");
 }
+
+/**
+ * Link a member to their Sleeper account.
+ *
+ * Stored as Sleeper's user_id rather than their handle or team name: the id
+ * never changes, whereas people rename their team most weeks and occasionally
+ * change their handle. Do this once and it holds for good.
+ */
+export async function linkSleeperAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const userId = Number(formData.get("userId"));
+  const sleeperUserId = String(formData.get("sleeperUserId") ?? "").trim();
+  if (!Number.isInteger(userId)) return;
+
+  await sql`
+    UPDATE users
+    SET sleeper_user_id = ${sleeperUserId || null}
+    WHERE id = ${userId}
+  `;
+  revalidatePath("/admin");
+  revalidatePath("/parlay");
+}

@@ -7,8 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
   display_name  TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
-  -- Optional: links this login to a Sleeper account so we can match up
-  -- fantasy matchups to the right person.
+  -- Links this login to a Sleeper account. This is Sleeper's user_id, which
+  -- never changes -- unlike the display name, and unlike the team name, which
+  -- people rename constantly.
   sleeper_user_id TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -27,6 +28,8 @@ CREATE TABLE IF NOT EXISTS parlays (
   stake_cents          INTEGER NOT NULL DEFAULT 1000
                        CHECK (stake_cents >= 0),
   notes                TEXT,
+  -- Whoever came last the week before, and so has to place this ticket.
+  placer_user_id       INTEGER REFERENCES users(id),
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   locked_at            TIMESTAMPTZ,
   UNIQUE (season, week)

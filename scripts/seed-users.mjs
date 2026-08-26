@@ -26,7 +26,7 @@ loadEnv();
 const LEAGUE = [
   { username: "joe", displayName: "Joe", admin: true },
   { username: "mike", displayName: "Mike" },
-  { username: "dave", displayName: "Dave" },
+  { username: "biz", displayName: "Biz" },
   { username: "chris", displayName: "Chris" },
   { username: "steve", displayName: "Steve" },
   { username: "tony", displayName: "Tony" },

@@ -9,6 +9,7 @@ export type LeagueMember = {
   username: string;
   displayName: string;
   isAdmin: boolean;
+  sleeperUserId: string | null;
 };
 
 export type ParlayLeg = {
@@ -54,7 +55,7 @@ export type SideBet = {
 
 export async function listMembers(): Promise<LeagueMember[]> {
   const rows = await sql`
-    SELECT id, username, display_name, is_admin
+    SELECT id, username, display_name, is_admin, sleeper_user_id
     FROM users ORDER BY display_name
   `;
   return rows.map((r: any) => ({
@@ -62,6 +63,7 @@ export async function listMembers(): Promise<LeagueMember[]> {
     username: r.username,
     displayName: r.display_name,
     isAdmin: r.is_admin,
+    sleeperUserId: r.sleeper_user_id,
   }));
 }
 
