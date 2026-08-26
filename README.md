@@ -25,8 +25,21 @@ Already done if you're reading this on GitHub.
 ### 2. Import it into Vercel
 
 1. Go to [vercel.com/new](https://vercel.com/new) and pick this repository.
-2. Click **Deploy**. The first build will fail — there's no database yet.
-   That's expected.
+2. Leave the framework preset (Next.js), root directory, and build settings
+   exactly as detected — they're already right.
+3. Expand **Environment Variables**. Vercel pre-fills three names it found in
+   `.env.example`, with the placeholder values:
+   - **`DATABASE_URL` — delete it, or leave it blank.** This matters. If you
+     save the placeholder, adding a Postgres store later will not overwrite
+     it, and the site will keep trying to reach a database host called
+     `host`. Leave it unset and step 3 fills it in for you.
+   - `SESSION_SECRET` — paste a real random value (command below).
+   - `SLEEPER_LEAGUE_ID` — your league ID, or blank for now.
+4. Click **Deploy**.
+
+The deploy will **succeed** — every page is server-rendered on demand, so
+nothing touches the database at build time. But visiting the site will throw a
+runtime error until you add the database in the next step. That's expected.
 
 ### 3. Add a database
 
@@ -83,7 +96,8 @@ one who can lock weeks, grade legs, and settle side bets.
 
 ### 6. Redeploy
 
-Back in Vercel, hit **Redeploy**. Done — your league is live.
+Back in Vercel, hit **Redeploy** so the app picks up `DATABASE_URL`. Done —
+your league is live.
 
 ---
 
