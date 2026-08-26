@@ -44,13 +44,28 @@ runtime error until you add the database in the next step. That's expected.
 ### 3. Add a database
 
 1. In your new Vercel project: **Storage → Create Database → Postgres**.
-2. Accept the defaults and connect it to the project.
+2. **Pick Neon** if you're offered a choice of providers. Any Postgres works —
+   see below — but Neon is the path of least resistance on Vercel.
+3. Accept the defaults and connect it to the project.
 
-Vercel sets `DATABASE_URL` for you.
+The integration sets the connection string for you. You do not need to copy
+or rename anything.
 
-> **Use the pooled connection string** (the host has `-pooler` in it). Vercel's
-> Neon integration sets this by default. It keeps serverless functions from
-> exhausting the connection limit.
+**Any Postgres host works.** The app looks for the connection string under
+`DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, and a few other common
+names, so it doesn't matter which provider you choose or what they call it.
+See `src/lib/db-url.ts`.
+
+**Pooled connections are preferred.** If a provider offers both, the pooled
+string (its host usually contains `-pooler`) is the one to use — serverless
+functions can otherwise exhaust the database's connection limit. The app picks
+the pooled variable automatically when both are present, and logs a warning if
+it has to fall back to a direct connection.
+
+**Placeholders count as unset.** If you paste the `.env.example` sample value
+(`postgresql://user:password@host/dbname`) anywhere, the app ignores it and
+tells you the variable is missing — rather than failing with a confusing DNS
+error for a host named `host`.
 
 ### 4. Add the other two environment variables
 
@@ -152,6 +167,7 @@ src/
     sleeper.ts         read-only Sleeper API client        <- unit tested
     auth.ts            login, session cookies
     db.ts              Postgres connection + query helper
+    db-url.ts          finds the connection string, any provider  <- unit tested
     queries.ts         database reads
     actions.ts         database writes (all of them)
     week.ts            what NFL week is it

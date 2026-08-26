@@ -12,6 +12,7 @@
  *   node scripts/seed-users.mjs --reset joe
  */
 import { connect } from "./db-connect.mjs";
+import { resolveDatabaseUrl, missingUrlMessage } from "../src/lib/db-url.ts";
 import { loadEnv } from "./load-env.mjs";
 import { hashPassword, generatePassword } from "../src/lib/crypto.ts";
 
@@ -35,11 +36,12 @@ const LEAGUE = [
   { username: "sean", displayName: "Sean" },
 ];
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error("DATABASE_URL is not set. Run npm run db:setup first.");
+const resolved = resolveDatabaseUrl();
+if (!resolved) {
+  console.error(`\n${missingUrlMessage()}\n`);
   process.exit(1);
 }
+const url = resolved.url;
 const { sql, client } = await connect(url);
 
 const resetIndex = process.argv.indexOf("--reset");

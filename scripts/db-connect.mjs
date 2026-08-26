@@ -1,4 +1,5 @@
 import pg from "pg";
+import { needsSsl } from "../src/lib/db-url.ts";
 
 /**
  * Shared connection helper for the command-line scripts.
@@ -7,7 +8,7 @@ import pg from "pg";
 export async function connect(url) {
   const client = new pg.Client({
     connectionString: url,
-    ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: false },
+    ssl: needsSsl(url) ? { rejectUnauthorized: false } : false,
   });
   await client.connect();
 

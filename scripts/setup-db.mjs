@@ -7,20 +7,18 @@
  */
 import { readFile } from "node:fs/promises";
 import { connect } from "./db-connect.mjs";
+import { resolveDatabaseUrl, missingUrlMessage } from "../src/lib/db-url.ts";
 import { loadEnv } from "./load-env.mjs";
 
 loadEnv();
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error(
-    "\nDATABASE_URL is not set.\n\n" +
-      "  On Vercel: add a Postgres store to the project, then run\n" +
-      "    vercel env pull .env.local\n" +
-      "  Locally: copy .env.example to .env.local and fill it in.\n",
-  );
+const resolved = resolveDatabaseUrl();
+if (!resolved) {
+  console.error(`\n${missingUrlMessage()}\n`);
   process.exit(1);
 }
+const url = resolved.url;
+console.log(`Using ${resolved.source}`);
 
 const { client } = await connect(url);
 const schema = await readFile(new URL("../db/schema.sql", import.meta.url), "utf8");

@@ -1,12 +1,16 @@
 import { Pool } from "pg";
+import {
+  resolveDatabaseUrl,
+  missingUrlMessage,
+  needsSsl,
+} from "./db-url.ts";
 
 /**
  * One connection pool per server instance.
  *
  * `pg` speaks the standard Postgres wire protocol, so the same code works
- * against Vercel/Neon in production and a plain local Postgres in development.
- * On Vercel, use the POOLED connection string (the host with `-pooler` in it)
- * so serverless invocations don't exhaust the connection limit.
+ * against any Postgres host -- Neon, Supabase, Prisma Postgres, or a plain
+ * local server. See db-url.ts for how the connection string is located.
  */
 declare global {
   // eslint-disable-next-line no-var
@@ -15,22 +19,23 @@ declare global {
 
 function pool(): Pool {
   if (!globalThis.__hflPool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error(
-        "DATABASE_URL is not set. On Vercel, add a Postgres store to the " +
-          "project and it gets set automatically. Locally, copy .env.example " +
-          "to .env.local and fill it in.",
+    const resolved = resolveDatabaseUrl();
+    if (!resolved) throw new Error(missingUrlMessage());
+
+    if (!resolved.isPooled) {
+      // Not fatal -- the site works -- but on serverless this will run out of
+      // connections under load, so make sure it shows up in the logs.
+      console.warn(
+        `[db] Using ${resolved.source}, which is a direct (unpooled) ` +
+          "connection. Prefer the pooled connection string (its host " +
+          "usually contains '-pooler') to avoid exhausting connections.",
       );
     }
 
     globalThis.__hflPool = new Pool({
-      connectionString,
-      // Hosted Postgres (Neon, Supabase, Vercel) requires TLS; a local
-      // development server generally does not have a certificate at all.
-      ssl: /localhost|127\.0\.0\.1/.test(connectionString)
-        ? false
-        : { rejectUnauthorized: false },
+      connectionString: resolved.url,
+      // Hosted Postgres requires TLS; a local dev server has no certificate.
+      ssl: needsSsl(resolved.url) ? { rejectUnauthorized: false } : false,
       max: 5,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
