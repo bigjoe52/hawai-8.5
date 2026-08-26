@@ -9,3 +9,6 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Your league roster. Yours, never committed.
+league.roster.json

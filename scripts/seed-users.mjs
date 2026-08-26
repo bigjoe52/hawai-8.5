@@ -11,6 +11,7 @@
  * To reset one person's password:
  *   node scripts/seed-users.mjs --reset joe
  */
+import { existsSync, readFileSync } from "node:fs";
 import { connect } from "./db-connect.mjs";
 import { resolveDatabaseUrl, missingUrlMessage } from "../src/lib/db-url.ts";
 import { loadEnv } from "./load-env.mjs";
@@ -19,14 +20,19 @@ import { hashPassword, generatePassword } from "../src/lib/crypto.ts";
 loadEnv();
 
 // ---------------------------------------------------------------------------
-// EDIT THIS: your ten league members.
-// `admin: true` is the commissioner -- they can lock weeks, grade legs, and
-// settle side bets. Give it to yourself.
+// Your league lives in league.roster.json, NOT in this file.
+//
+// That file is gitignored, so your names are yours alone and can never be
+// clobbered by an update to this script. Copy league.roster.example.json to
+// league.roster.json and edit it.
+//
+// If no such file exists, the placeholder names below are used so a fresh
+// clone still works.
 // ---------------------------------------------------------------------------
-const LEAGUE = [
+const PLACEHOLDER = [
   { username: "joe", displayName: "Joe", admin: true },
   { username: "mike", displayName: "Mike" },
-  { username: "biz", displayName: "Biz" },
+  { username: "dave", displayName: "Dave" },
   { username: "chris", displayName: "Chris" },
   { username: "steve", displayName: "Steve" },
   { username: "tony", displayName: "Tony" },
@@ -35,6 +41,63 @@ const LEAGUE = [
   { username: "ryan", displayName: "Ryan" },
   { username: "sean", displayName: "Sean" },
 ];
+
+const LEAGUE = readRoster();
+
+function readRoster() {
+  const file = new URL("../league.roster.json", import.meta.url);
+  if (!existsSync(file)) {
+    console.log(
+      "\nNo league.roster.json found — using placeholder names.\n" +
+        "Copy league.roster.example.json to league.roster.json and put your\n" +
+        "actual league in it.\n",
+    );
+    return PLACEHOLDER;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch (err) {
+    console.error(`\nleague.roster.json is not valid JSON: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  const members = Array.isArray(parsed) ? parsed : parsed?.members;
+  if (!Array.isArray(members) || members.length === 0) {
+    console.error(
+      '\nleague.roster.json needs a "members" array. See league.roster.example.json.\n',
+    );
+    process.exit(1);
+  }
+
+  const seen = new Set();
+  for (const m of members) {
+    if (typeof m?.username !== "string" || m.username.trim() === "") {
+      console.error("\nEvery member needs a username.\n");
+      process.exit(1);
+    }
+    const key = m.username.trim().toLowerCase();
+    if (seen.has(key)) {
+      console.error(`\nTwo members share the username "${key}".\n`);
+      process.exit(1);
+    }
+    seen.add(key);
+  }
+
+  const admins = members.filter((m) => m.admin === true).length;
+  if (admins === 0) {
+    console.log('\nWarning: nobody has "admin": true, so no commissioner.\n');
+  } else if (admins > 1) {
+    console.log(`\nNote: ${admins} members are marked commissioner.\n`);
+  }
+
+  return members.map((m) => ({
+    username: m.username.trim(),
+    displayName: (m.displayName ?? m.username).trim(),
+    admin: m.admin === true,
+  }));
+}
 
 const resolved = resolveDatabaseUrl();
 if (!resolved) {

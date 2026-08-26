@@ -152,9 +152,20 @@ they are only valid for a few minutes. Press `Ctrl+C` in the terminal, run
 `db:seed` prints ten usernames and passwords **once**. Copy them somewhere
 before you close the terminal, then hand them out.
 
-**Ideally before you run it**, open `scripts/seed-users.mjs` and edit the
-`LEAGUE` list to your actual guys. Set `admin: true` on yourself — the
-commissioner is the one who can lock weeks, grade legs, and settle side bets.
+**Before you run it**, set up your roster:
+
+```bash
+cp league.roster.example.json league.roster.json
+nano league.roster.json
+```
+
+Put your ten guys in it. Set `"admin": true` on yourself — the commissioner is
+the one who can lock weeks, grade legs, and settle side bets.
+
+`league.roster.json` is **gitignored on purpose**. Your names live outside the
+tracked code, so a `git pull` can never collide with them. (An earlier version
+kept the list inside `scripts/seed-users.mjs`, which meant any change to that
+script fought with your edits.)
 
 **You can also edit it afterwards.** Re-running `npm run db:seed` is safe and
 does the sensible thing:
@@ -321,6 +332,7 @@ src/
     week.ts            the league's week schedule           <- unit tested
     grading.ts         decides who won, from final scores    <- unit tested
     settle.ts          grades finished weeks automatically
+league.roster.json     your league (gitignored — copy the .example)
 db/schema.sql          the tables
 scripts/               setup and seeding
 tests/                 unit tests

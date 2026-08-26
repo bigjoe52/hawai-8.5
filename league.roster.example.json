@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "Copy this file to league.roster.json and put your actual league in it.",
+    "league.roster.json is gitignored, so your names are yours alone and will",
+    "never collide with an update to the code.",
+    "",
+    "username    what they type to log in. Short and lowercase is best.",
+    "displayName what everyone sees on the site.",
+    "admin       true for the commissioner. Exactly one person."
+  ],
+  "members": [
+    { "username": "joe", "displayName": "Joe", "admin": true },
+    { "username": "mike", "displayName": "Mike" },
+    { "username": "dave", "displayName": "Dave" },
+    { "username": "chris", "displayName": "Chris" },
+    { "username": "steve", "displayName": "Steve" },
+    { "username": "tony", "displayName": "Tony" },
+    { "username": "nick", "displayName": "Nick" },
+    { "username": "matt", "displayName": "Matt" },
+    { "username": "ryan", "displayName": "Ryan" },
+    { "username": "sean", "displayName": "Sean" }
+  ]
+}
