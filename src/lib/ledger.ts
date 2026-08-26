@@ -9,9 +9,20 @@ export type SettledBet = {
   id: number;
   proposerId: number;
   takerId: number;
+  /** What the proposer put up. */
   stakeCents: number;
+  /**
+   * What the taker put up. Equal to stakeCents on a straight-up bet; on a
+   * moneyline the favourite risks more than the underdog.
+   */
+  takerStakeCents: number;
   winner: "proposer" | "taker" | "push";
 };
+
+/** Whoever loses pays what they risked. */
+function amountOwed(bet: SettledBet): number {
+  return bet.winner === "proposer" ? bet.takerStakeCents : bet.stakeCents;
+}
 
 export type Debt = {
   fromUserId: number;
@@ -40,8 +51,9 @@ export function netByUser(bets: SettledBet[]): Map<number, number> {
 
     const winnerId = bet.winner === "proposer" ? bet.proposerId : bet.takerId;
     const loserId = bet.winner === "proposer" ? bet.takerId : bet.proposerId;
-    bump(winnerId, bet.stakeCents);
-    bump(loserId, -bet.stakeCents);
+    const amount = amountOwed(bet);
+    bump(winnerId, amount);
+    bump(loserId, -amount);
   }
 
   return net;
@@ -65,8 +77,9 @@ export function pairwiseDebts(bets: SettledBet[]): Debt[] {
 
     const [low, high] = winnerId < loserId ? [winnerId, loserId] : [loserId, winnerId];
     const key = `${low}:${high}`;
+    const amount = amountOwed(bet);
     // Positive means `low` is up on `high`.
-    const delta = winnerId === low ? bet.stakeCents : -bet.stakeCents;
+    const delta = winnerId === low ? amount : -amount;
     pairs.set(key, (pairs.get(key) ?? 0) + delta);
   }
 

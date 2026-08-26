@@ -14,9 +14,6 @@
  */
 export const SCORE_STDEV = 25;
 
-/** House edge baked into the moneylines, so the two prices aren't a pure coin flip. */
-export const VIG = 0.04;
-
 /** Longest price we will ever show, so a blowout mismatch stays readable. */
 const MAX_ODDS = 2000;
 
@@ -31,7 +28,13 @@ export type Market = {
   title: string;
   /** The two sides, always exactly two. */
   sides: [string, string];
-  /** Odds for each side, American. Null for even-money propositions. */
+  /**
+   * American odds for each side, or null for a straight-up bet.
+   *
+   * Only the moneyline carries a price. Spreads and totals are set at the
+   * projected number, which makes both sides a coin flip, so they are settled
+   * straight up: the loser pays the winner the stake.
+   */
   odds: [number, number] | null;
 };
 
@@ -45,6 +48,9 @@ export function toHalfPoint(value: number): number {
  * approximation. Accurate to about 1e-7, which is far more than a $5 bet needs.
  */
 export function normalCdf(z: number): number {
+  // The approximation below lands a hair off 0.5 at z = 0; say it exactly, so
+  // an evenly matched game prices as a clean pick'em.
+  if (z === 0) return 0.5;
   const sign = z < 0 ? -1 : 1;
   const x = Math.abs(z) / Math.SQRT2;
   const t = 1 / (1 + 0.3275911 * x);
@@ -72,6 +78,10 @@ export function winProbability(a: number, b: number, stdev = SCORE_STDEV): numbe
 /** Convert a probability to American odds, rounded to a realistic increment. */
 export function probabilityToAmerican(probability: number): number {
   const p = Math.min(Math.max(probability, 0.0001), 0.9999);
+  // A coin flip is even money. Without this it lands on -100 for one side and
+  // +100 for the other -- the same price written two different ways, which
+  // reads like a mistake.
+  if (Math.abs(p - 0.5) < 1e-9) return 100;
   const raw = p >= 0.5 ? (-100 * p) / (1 - p) : (100 * (1 - p)) / p;
   // Quote to the nearest 5, like a real book.
   const rounded = Math.round(raw / 5) * 5;
@@ -82,19 +92,56 @@ export function probabilityToAmerican(probability: number): number {
 }
 
 /**
- * Price both sides of a two-way market, with the vig split evenly.
+ * Price both sides of a two-way market at fair odds.
  *
- * Raising each side's implied probability by half the vig means the two prices
- * add up to slightly more than 100%, which is what makes it a market rather
- * than a coin flip.
+ * No vig. Nobody is running a book here -- these are ten friends betting each
+ * other directly, so the two prices reflect the projected probabilities and
+ * nothing else. The implied probabilities add up to 100%, give or take the
+ * rounding to the nearest 5.
  */
-export function priceTwoWay(
-  probabilityA: number,
-  vig = VIG,
-): [number, number] {
-  const a = Math.min(probabilityA + vig / 2, 0.999);
-  const b = Math.min(1 - probabilityA + vig / 2, 0.999);
-  return [probabilityToAmerican(a), probabilityToAmerican(b)];
+export function priceTwoWay(probabilityA: number): [number, number] {
+  return [
+    probabilityToAmerican(probabilityA),
+    probabilityToAmerican(1 - probabilityA),
+  ];
+}
+
+/* -------------------------------------------------------------------------
+ * Who owes what
+ * ---------------------------------------------------------------------- */
+
+/**
+ * What you collect if your side wins, given what you put up.
+ *
+ *   -280 risking $5.00  ->  wins $1.79   (lay 280 to win 100)
+ *   +280 risking $5.00  ->  wins $14.00  (risk 100 to win 280)
+ *
+ * In a head-to-head bet this is also exactly what the *other* person is
+ * risking: whatever you stand to win, they stand to lose, and vice versa.
+ */
+export function winningsFor(american: number, riskCents: number): number {
+  if (!Number.isInteger(riskCents) || riskCents <= 0) {
+    throw new Error(`risk must be a positive whole number of cents, got ${riskCents}`);
+  }
+  const ratio = american > 0 ? american / 100 : 100 / Math.abs(american);
+  // Never round a real bet down to nothing.
+  return Math.max(1, Math.round(riskCents * ratio));
+}
+
+/**
+ * Both halves of a head-to-head bet: what each person puts up, and therefore
+ * what each collects from the other.
+ *
+ * The person taking `american` risks `riskCents`. The other person risks what
+ * the first stands to win. Whoever loses pays what they risked.
+ */
+export function headToHead(
+  american: number | null,
+  riskCents: number,
+): { yourRisk: number; theirRisk: number } {
+  // An even-money bet is straight up: same amount on both sides.
+  if (american === null) return { yourRisk: riskCents, theirRisk: riskCents };
+  return { yourRisk: riskCents, theirRisk: winningsFor(american, riskCents) };
 }
 
 /** Format a spread the way it is spoken: "-6.5" for the favourite. */
@@ -121,9 +168,11 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
     odds: priceTwoWay(pHome),
   });
 
-  // --- Spread: margin of victory, priced near even on both sides ---
-  const rawEdge = home.projected - away.projected;
-  const line = toHalfPoint(rawEdge);
+  // --- Spread: margin of victory ---
+  // The line is set at the projected margin, which makes both sides a coin
+  // flip by construction. So these are straight-up bets with no price on
+  // them: loser pays winner the stake.
+  const line = toHalfPoint(home.projected - away.projected);
   markets.push({
     kind: "spread",
     title: "Spread",
@@ -131,8 +180,7 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
       `${home.name} ${formatSpread(-line)}`,
       `${away.name} ${formatSpread(line)}`,
     ],
-    // A fair spread makes both sides roughly a coin flip, so both get -110.
-    odds: [-110, -110],
+    odds: null,
   });
 
   // --- Game total ---
@@ -141,7 +189,7 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
     kind: "total",
     title: "Game total",
     sides: [`Over ${total}`, `Under ${total}`],
-    odds: [-110, -110],
+    odds: null,
   });
 
   // --- Each team's own total ---
@@ -151,7 +199,7 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
       kind: "team_total",
       title: `${team.name} total`,
       sides: [`Over ${teamTotal}`, `Under ${teamTotal}`],
-      odds: [-110, -110],
+      odds: null,
     });
   }
 

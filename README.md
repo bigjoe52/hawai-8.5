@@ -298,8 +298,18 @@ reading `pts_ppr` would run high by roughly one point per reception — and the
 board says when that happened. Win probability comes from treating both
 scores as normal with a ~25 point spread, which is roughly how much a fantasy
 score actually bounces around week to week; that probability becomes the
-moneyline, with a 4% vig split evenly across the two sides. Spreads and totals
-are the projected difference and sum, quoted to the half point. A lineup whose
+moneyline at **fair odds — no vig**, since nobody here is running a book.
+
+**Only the moneyline carries a price.** Spreads and totals are set at the
+projected number, which makes both sides a coin flip by construction, so they
+are settled **straight up**: loser pays winner the stake, no odds shown.
+
+**A priced bet is not even money, and the site says so plainly.** Backing a
+-255 favourite with $5 means you collect $1.96 if it wins and pay $5 if it
+loses; the other person is putting up that $1.96. Before anything is posted,
+the confirmation box spells out both amounts — what they owe you and what you
+owe them. Each side's risk is stored separately, so the ledger always moves
+**what the loser risked**, not some shared stake. A lineup whose
 players are mostly missing from the projections is left off the board rather
 than shown as a suspiciously round number.
 

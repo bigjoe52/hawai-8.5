@@ -9,12 +9,37 @@ import {
 } from "../src/lib/ledger.ts";
 
 let nextId = 1;
+
+/** A straight-up bet: both sides put up the same amount. */
 const bet = (
   proposerId: number,
   takerId: number,
   stakeCents: number,
   winner: SettledBet["winner"],
-): SettledBet => ({ id: nextId++, proposerId, takerId, stakeCents, winner });
+): SettledBet => ({
+  id: nextId++,
+  proposerId,
+  takerId,
+  stakeCents,
+  takerStakeCents: stakeCents,
+  winner,
+});
+
+/** A priced bet: the two sides put up different amounts. */
+const priced = (
+  proposerId: number,
+  takerId: number,
+  stakeCents: number,
+  takerStakeCents: number,
+  winner: SettledBet["winner"],
+): SettledBet => ({
+  id: nextId++,
+  proposerId,
+  takerId,
+  stakeCents,
+  takerStakeCents,
+  winner,
+});
 
 test("winner gains the stake, loser drops it", () => {
   const net = netByUser([bet(1, 2, 2000, "proposer")]);
@@ -128,4 +153,71 @@ test("empty ledger is handled without blowing up", () => {
   assert.deepEqual(standings([]), []);
   assert.deepEqual(pairwiseDebts([]), []);
   assertBalanced(netByUser([]));
+});
+
+/* --- Priced (moneyline) bets, where the two sides risk different amounts --- */
+
+test("the winner collects what the LOSER risked, not their own stake", () => {
+  // Joe backs a favourite: puts up $5.00 to win $1.79.
+  const joeWins = netByUser([priced(1, 2, 500, 179, "proposer")]);
+  assert.equal(joeWins.get(1), 179, "Joe collects the underdog's $1.79");
+  assert.equal(joeWins.get(2), -179);
+
+  // Same bet, the other result: Joe loses the $5.00 he put up.
+  const mikeWins = netByUser([priced(1, 2, 500, 179, "taker")]);
+  assert.equal(mikeWins.get(1), -500);
+  assert.equal(mikeWins.get(2), 500, "Mike collects the favourite's $5.00");
+});
+
+test("a priced ledger still balances to zero", () => {
+  assertBalanced(
+    netByUser([
+      priced(1, 2, 500, 179, "proposer"),
+      priced(2, 3, 500, 1400, "taker"),
+      priced(3, 1, 250, 900, "proposer"),
+      bet(1, 4, 1000, "taker"),
+    ]),
+  );
+});
+
+test("pairwise debts use the amount actually owed", () => {
+  const debts = pairwiseDebts([priced(1, 2, 500, 179, "proposer")]);
+  assert.deepEqual(debts, [{ fromUserId: 2, toUserId: 1, cents: 179 }]);
+});
+
+test("a big underdog win outweighs several favourite wins", () => {
+  // Joe wins three favourite bets at $1.79 each, then loses one dog bet at $14.
+  const debts = pairwiseDebts([
+    priced(1, 2, 500, 179, "proposer"),
+    priced(1, 2, 500, 179, "proposer"),
+    priced(1, 2, 500, 179, "proposer"),
+    priced(1, 2, 500, 1400, "taker"),
+  ]);
+  // 537 collected, 500 paid out... wait: he loses his own 500 on the last one.
+  // 179 * 3 = 537 in, 500 out => Joe up 37.
+  assert.deepEqual(debts, [{ fromUserId: 2, toUserId: 1, cents: 37 }]);
+});
+
+test("standings count a priced win as one win, whatever the amount", () => {
+  const rows = standings([
+    priced(1, 2, 500, 179, "proposer"),
+    priced(1, 2, 500, 1400, "taker"),
+  ]);
+  const joe = rows.find((r) => r.userId === 1)!;
+  assert.equal(joe.wins, 1);
+  assert.equal(joe.losses, 1);
+  // Won $1.79, lost $5.00.
+  assert.equal(joe.netCents, 179 - 500);
+});
+
+test("straight-up and priced bets mix correctly in one ledger", () => {
+  const bets = [
+    bet(1, 2, 500, "proposer"),            // Joe +500
+    priced(1, 2, 500, 179, "taker"),       // Joe -500
+    priced(2, 1, 250, 750, "proposer"),    // Mike +750, Joe -750
+  ];
+  const net = netByUser(bets);
+  assert.equal(net.get(1), 500 - 500 - 750);
+  assert.equal(net.get(2), -500 + 500 + 750);
+  assertBalanced(net);
 });

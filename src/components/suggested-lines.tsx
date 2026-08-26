@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { buildMarkets, type Market, type TeamLine } from "@/lib/lines.ts";
-import { formatAmerican } from "@/lib/odds.ts";
+import {
+  buildMarkets,
+  headToHead,
+  type Market,
+  type TeamLine,
+} from "@/lib/lines.ts";
+import { formatAmerican, formatCents, parseStakeToCents } from "@/lib/odds.ts";
 import { postLineBetAction } from "@/lib/actions.ts";
 import type { HeadToHead } from "@/lib/sleeper.ts";
 
@@ -14,6 +19,16 @@ type Selection = {
   myOdds: number | null;
   matchup: string;
 };
+
+/** "$5.00" from a typed amount, or null while it is still nonsense. */
+function centsOrNull(input: string): number | null {
+  try {
+    const cents = parseStakeToCents(input);
+    return cents > 0 ? cents : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The generated market board.
@@ -160,11 +175,15 @@ function ConfirmDialog({
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [stake, setStake] = useState(defaultStake);
+
+  const cents = centsOrNull(stake);
+  const amounts = cents ? headToHead(selection.myOdds, cents) : null;
+  const priced = selection.myOdds !== null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      // Clicking the backdrop closes; clicks inside the panel must not.
       onClick={onClose}
       role="presentation"
     >
@@ -192,8 +211,6 @@ function ConfirmDialog({
 
         <form
           action={(formData) => {
-            // Close only once the bet has actually been written, so a slow
-            // post can't look like it succeeded before it did.
             startTransition(async () => {
               await postLineBetAction(formData);
               onClose();
@@ -207,23 +224,68 @@ function ConfirmDialog({
           <input type="hidden" name="title" value={selection.title} />
           <input type="hidden" name="proposerSide" value={selection.mySide} />
           <input type="hidden" name="takerSide" value={selection.theirSide} />
+          <input
+            type="hidden"
+            name="odds"
+            value={selection.myOdds === null ? "" : String(selection.myOdds)}
+          />
 
           <label htmlFor="line-stake" className="mb-1.5 block text-sm text-white/70">
-            Stake
+            {priced ? "What you put up" : "Stake"}
           </label>
           <input
             id="line-stake"
             name="stake"
-            defaultValue={defaultStake}
+            value={stake}
+            onChange={(e) => setStake(e.target.value)}
             inputMode="decimal"
             autoFocus
             className="w-full rounded-md border border-white/15 bg-deep-950 px-3 py-2 font-mono text-sm text-white focus:border-surf-500 focus:outline-none"
           />
 
+          {/* The whole point: say plainly who pays who, and how much. */}
+          <div className="mt-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm">
+            {amounts === null ? (
+              <p className="text-white/40">Enter a dollar amount.</p>
+            ) : priced ? (
+              <>
+                <p className="text-white/80">
+                  If you win, they owe you{" "}
+                  <strong className="font-mono text-surf-300">
+                    {formatCents(amounts.theirRisk)}
+                  </strong>
+                </p>
+                <p className="mt-1 text-white/80">
+                  If you lose, you owe them{" "}
+                  <strong className="font-mono text-red-300">
+                    {formatCents(amounts.yourRisk)}
+                  </strong>
+                </p>
+                <p className="mt-2 text-xs text-white/40">
+                  Not even money — that&apos;s the price. You put up{" "}
+                  {formatCents(amounts.yourRisk)}, they put up{" "}
+                  {formatCents(amounts.theirRisk)}.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-white/80">
+                  Straight up — loser pays winner{" "}
+                  <strong className="font-mono text-surf-300">
+                    {formatCents(amounts.yourRisk)}
+                  </strong>
+                </p>
+                <p className="mt-2 text-xs text-white/40">
+                  Both sides put up the same amount.
+                </p>
+              </>
+            )}
+          </div>
+
           <div className="mt-5 flex gap-2">
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || amounts === null}
               className="flex-1 rounded-md bg-surf-500 px-4 py-2 text-sm font-semibold text-deep-950 transition hover:bg-surf-300 disabled:opacity-60"
             >
               {pending ? "Posting..." : "Post it"}

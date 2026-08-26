@@ -10,6 +10,7 @@ import {
   clearSessionCookie,
 } from "./auth.ts";
 import { parseStakeToCents } from "./odds.ts";
+import { winningsFor } from "./lines.ts";
 
 /**
  * Every write to the database goes through this file.
@@ -232,13 +233,15 @@ export async function postSideBetAction(
   }
   if (stakeCents <= 0) return { error: "Stake has to be more than zero." };
 
+  // A bet somebody typed out is settled straight up: loser pays the stake.
   await sql`
     INSERT INTO side_bets
       (season, week, proposer_id, title, details, proposer_side, taker_side,
-       stake_cents, sleeper_matchup_id)
+       stake_cents, taker_stake_cents, sleeper_matchup_id)
     VALUES
       (${season}, ${week}, ${user.id}, ${title}, ${details || null},
-       ${proposerSide}, ${takerSide}, ${stakeCents}, ${matchupId || null})
+       ${proposerSide}, ${takerSide}, ${stakeCents}, ${stakeCents},
+       ${matchupId || null})
   `;
 
   revalidatePath("/side-bets");
@@ -323,6 +326,7 @@ export async function postLineBetAction(formData: FormData): Promise<void> {
   const takerSide = String(formData.get("takerSide") ?? "").trim();
   const matchupId = String(formData.get("matchupId") ?? "").trim();
   const rawStake = String(formData.get("stake") ?? "");
+  const rawOdds = String(formData.get("odds") ?? "").trim();
 
   if (!title || !proposerSide || !takerSide) return;
   if (!Number.isInteger(season) || !Number.isInteger(week)) return;
@@ -335,14 +339,24 @@ export async function postLineBetAction(formData: FormData): Promise<void> {
   }
   if (stakeCents <= 0) return;
 
+  // Priced bets are not even money: whatever the proposer stands to win is
+  // exactly what the taker is risking. Straight-up bets carry no odds, so both
+  // sides put up the same amount.
+  const odds = rawOdds === "" ? null : Number(rawOdds);
+  const priced = odds !== null && Number.isInteger(odds) && (odds <= -100 || odds >= 100);
+  const takerStakeCents = priced
+    ? winningsFor(odds as number, stakeCents)
+    : stakeCents;
+
   await sql`
     INSERT INTO side_bets
       (season, week, proposer_id, title, details, proposer_side, taker_side,
-       stake_cents, sleeper_matchup_id)
+       stake_cents, taker_stake_cents, sleeper_matchup_id)
     VALUES
       (${season}, ${week}, ${user.id}, ${title},
        ${"Line generated from Sleeper projections."},
-       ${proposerSide}, ${takerSide}, ${stakeCents}, ${matchupId || null})
+       ${proposerSide}, ${takerSide}, ${stakeCents}, ${takerStakeCents},
+       ${matchupId || null})
   `;
 
   revalidatePath("/side-bets");

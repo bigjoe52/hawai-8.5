@@ -43,6 +43,7 @@ export type SideBet = {
   proposerSide: string;
   takerSide: string;
   stakeCents: number;
+  takerStakeCents: number;
   status: "open" | "matched" | "settled" | "void";
   winner: "proposer" | "taker" | "push" | null;
 };
@@ -145,6 +146,7 @@ function toSideBet(r: any): SideBet {
     proposerSide: r.proposer_side,
     takerSide: r.taker_side,
     stakeCents: r.stake_cents,
+    takerStakeCents: r.taker_stake_cents,
     status: r.status,
     winner: r.winner,
   };
@@ -158,7 +160,7 @@ export async function listSideBets(
   const rows = await sql`
     SELECT b.id, b.season, b.week, b.proposer_id, b.taker_id, b.title,
            b.details, b.proposer_side, b.taker_side, b.stake_cents,
-           b.status, b.winner,
+           b.taker_stake_cents, b.status, b.winner,
            p.display_name AS proposer_name,
            t.display_name AS taker_name
     FROM side_bets b
@@ -177,7 +179,7 @@ export async function listUnsettledBets(): Promise<SideBet[]> {
   const rows = await sql`
     SELECT b.id, b.season, b.week, b.proposer_id, b.taker_id, b.title,
            b.details, b.proposer_side, b.taker_side, b.stake_cents,
-           b.status, b.winner,
+           b.taker_stake_cents, b.status, b.winner,
            p.display_name AS proposer_name,
            t.display_name AS taker_name
     FROM side_bets b
@@ -198,7 +200,7 @@ export async function listUnsettledBets(): Promise<SideBet[]> {
  */
 export async function listSettledBets(): Promise<SettledBet[]> {
   const rows = await sql`
-    SELECT id, proposer_id, taker_id, stake_cents, winner
+    SELECT id, proposer_id, taker_id, stake_cents, taker_stake_cents, winner
     FROM side_bets
     WHERE status IN ('settled', 'void')
       AND taker_id IS NOT NULL
@@ -209,6 +211,7 @@ export async function listSettledBets(): Promise<SettledBet[]> {
     proposerId: r.proposer_id,
     takerId: r.taker_id,
     stakeCents: r.stake_cents,
+    takerStakeCents: r.taker_stake_cents,
     winner: r.winner,
   }));
 }

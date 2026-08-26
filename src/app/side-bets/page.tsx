@@ -116,9 +116,12 @@ export default async function SideBetsPage({
               }
             />
             <p className="mt-4 text-xs text-white/40">
-              Clicking a side puts a $5 bet on the board for someone else to
-              take. The price is recorded in the wording; side bets settle head
-              to head at the stake shown.
+              Moneylines are priced at fair odds — no vig — so the favourite
+              risks more than the underdog, and the amounts each side puts up
+              differ. Spreads and totals are set at the projected number, which
+              makes them coin flips, so they are straight up: loser pays winner
+              the stake. Clicking a side shows the exact amounts before
+              anything is posted.
             </p>
           </Card>
         )}
@@ -154,6 +157,7 @@ export default async function SideBetsPage({
                   <BetHeader
                     title={bet.title}
                     stake={bet.stakeCents}
+                    takerStake={bet.takerStakeCents}
                     status={bet.status}
                   />
                   {bet.details && (
@@ -179,7 +183,8 @@ export default async function SideBetsPage({
                       <form action={takeSideBetAction}>
                         <input type="hidden" name="betId" value={bet.id} />
                         <button type="submit" className={buttonClass}>
-                          Take the other side · {formatCents(bet.stakeCents)}
+                          Take the other side · put up{" "}
+                          {formatCents(bet.takerStakeCents)}
                         </button>
                       </form>
                     )}
@@ -203,6 +208,7 @@ export default async function SideBetsPage({
                   <BetHeader
                     title={bet.title}
                     stake={bet.stakeCents}
+                    takerStake={bet.takerStakeCents}
                     status={bet.status}
                   />
                   <p className="mt-2 text-sm text-white/60">
@@ -210,6 +216,17 @@ export default async function SideBetsPage({
                     {bet.proposerSide}) vs{" "}
                     <span className="text-white/80">{bet.takerName}</span> (
                     {bet.takerSide})
+                  </p>
+                  <p className="mt-1.5 text-sm text-white/50">
+                    {bet.proposerName} wins →{" "}
+                    <span className="text-white/80">
+                      {bet.takerName} owes {formatCents(bet.takerStakeCents)}
+                    </span>
+                    {" · "}
+                    {bet.takerName} wins →{" "}
+                    <span className="text-white/80">
+                      {bet.proposerName} owes {formatCents(bet.stakeCents)}
+                    </span>
                   </p>
                 </li>
               ))}
@@ -238,7 +255,13 @@ export default async function SideBetsPage({
                         {winnerName ? (
                           <>
                             <span className="text-surf-300">{winnerName}</span>{" "}
-                            won {formatCents(bet.stakeCents)}
+                            won{" "}
+                            {formatCents(
+                              // The loser pays what the loser risked.
+                              bet.winner === "proposer"
+                                ? bet.takerStakeCents
+                                : bet.stakeCents,
+                            )}
                           </>
                         ) : (
                           "push — no money moved"
@@ -260,18 +283,25 @@ export default async function SideBetsPage({
 function BetHeader({
   title,
   stake,
+  takerStake,
   status,
 }: {
   title: string;
   stake: number;
+  takerStake: number;
   status: string;
 }) {
+  // A straight-up bet has one number. A priced one has two, and showing only
+  // the proposer's would misrepresent what the other person is risking.
+  const evenMoney = stake === takerStake;
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="font-medium text-white">{title}</h3>
       <span className="flex items-center gap-2">
         <span className="font-mono text-sm text-sunset-300">
-          {formatCents(stake)}
+          {evenMoney
+            ? formatCents(stake)
+            : `${formatCents(stake)} v ${formatCents(takerStake)}`}
         </span>
         <Badge status={status} />
       </span>

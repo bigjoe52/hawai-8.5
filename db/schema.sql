@@ -63,7 +63,12 @@ CREATE TABLE IF NOT EXISTS side_bets (
   -- What each side is actually backing, in plain words.
   proposer_side  TEXT NOT NULL,
   taker_side     TEXT NOT NULL,
+  -- What the proposer puts up.
   stake_cents    INTEGER NOT NULL CHECK (stake_cents > 0),
+  -- What the taker puts up. Equal to stake_cents for a straight-up bet; for a
+  -- moneyline it is the other side of the price, so the favourite risks more
+  -- than the underdog. Whoever loses pays what they risked.
+  taker_stake_cents INTEGER NOT NULL DEFAULT 0 CHECK (taker_stake_cents >= 0),
   -- open     = nobody has taken the other side yet
   -- matched  = someone took it, waiting on the result
   -- settled  = graded, counted in the ledger

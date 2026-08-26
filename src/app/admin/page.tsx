@@ -171,7 +171,9 @@ export default async function AdminPage({
                       <span className="text-white/40">· week {bet.week}</span>
                     </span>
                     <span className="font-mono text-sm text-sunset-300">
-                      {formatCents(bet.stakeCents)}
+                      {bet.stakeCents === bet.takerStakeCents
+                        ? formatCents(bet.stakeCents)
+                        : `${formatCents(bet.stakeCents)} v ${formatCents(bet.takerStakeCents)}`}
                     </span>
                   </div>
 
@@ -179,12 +181,12 @@ export default async function AdminPage({
                     <SettleButton
                       betId={bet.id}
                       winner="proposer"
-                      label={`${bet.proposerName} (${bet.proposerSide})`}
+                      label={`${bet.proposerName} (${bet.proposerSide}) — collects ${formatCents(bet.takerStakeCents)}`}
                     />
                     <SettleButton
                       betId={bet.id}
                       winner="taker"
-                      label={`${bet.takerName} (${bet.takerSide})`}
+                      label={`${bet.takerName} (${bet.takerSide}) — collects ${formatCents(bet.stakeCents)}`}
                     />
                     <SettleButton betId={bet.id} winner="push" label="Push" />
                   </div>

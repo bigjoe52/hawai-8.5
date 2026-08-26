@@ -6,6 +6,8 @@ import {
   winProbability,
   probabilityToAmerican,
   priceTwoWay,
+  winningsFor,
+  headToHead,
   formatSpread,
   buildMarkets,
   SCORE_STDEV,
@@ -77,9 +79,15 @@ test("probabilityToAmerican round-trips through decimal odds", () => {
   }
 });
 
-test("a coin flip is priced as a real market, never as impossible odds", () => {
-  const odds = probabilityToAmerican(0.5);
-  assert.ok(odds <= -100 || odds >= 100, `${odds} is not a valid American price`);
+test("a coin flip is even money, written one way", () => {
+  assert.equal(probabilityToAmerican(0.5), 100);
+  const [a, b] = priceTwoWay(0.5);
+  assert.equal(a, 100);
+  assert.equal(b, 100);
+});
+
+test("even money pays back what you put up", () => {
+  assert.deepEqual(headToHead(100, 500), { yourRisk: 500, theirRisk: 500 });
 });
 
 test("extreme probabilities stay within a readable range", () => {
@@ -101,14 +109,24 @@ test("every generated price is a legal American price", () => {
   }
 });
 
-test("the vig makes both sides sum to more than 100%", () => {
-  const [a, b] = priceTwoWay(0.5);
-  const total = 1 / americanToDecimal(a) + 1 / americanToDecimal(b);
-  assert.ok(total > 1.0, `implied total ${total} should exceed 1`);
-  assert.ok(total < 1.10, `implied total ${total} is a bigger vig than intended`);
+test("prices are fair: the two sides sum to 100%, no vig", () => {
+  for (const p of [0.5, 0.6, 0.75, 0.35]) {
+    const [a, b] = priceTwoWay(p);
+    const total = 1 / americanToDecimal(a) + 1 / americanToDecimal(b);
+    // Only rounding to the nearest 5 moves it off exactly 1.
+    assert.ok(
+      Math.abs(total - 1) < 0.02,
+      `probability ${p} implied a total of ${total}, expected ~1`,
+    );
+  }
 });
 
-test("the favourite is still the shorter price after vig", () => {
+test("an even matchup prices both sides identically", () => {
+  const [a, b] = priceTwoWay(0.5);
+  assert.equal(a, b);
+});
+
+test("the favourite is the shorter price", () => {
   const [fav, dog] = priceTwoWay(0.7);
   assert.ok(fav < 0, "favourite should be negative");
   assert.ok(dog > 0, "underdog should be positive");
@@ -118,6 +136,66 @@ test("formatSpread speaks like a sportsbook", () => {
   assert.equal(formatSpread(-6.5), "-6.5");
   assert.equal(formatSpread(6.5), "+6.5");
   assert.equal(formatSpread(0), "PK");
+});
+
+test("only the moneyline carries a price; the rest are straight up", () => {
+  const markets = buildMarkets(team("A", 121.4), team("B", 108.9, 2));
+  const priced = markets.filter((m) => m.odds !== null);
+  assert.equal(priced.length, 1);
+  assert.equal(priced[0].kind, "moneyline");
+  for (const m of markets.filter((m) => m.kind !== "moneyline")) {
+    assert.equal(m.odds, null, `${m.title} should have no odds`);
+  }
+});
+
+test("no -110 anywhere: straight-up markets show no price at all", () => {
+  const markets = buildMarkets(team("A", 121.4), team("B", 108.9, 2));
+  for (const m of markets) {
+    if (m.kind === "moneyline") continue;
+    assert.equal(m.odds, null);
+  }
+});
+
+test("winningsFor: what you collect on a favourite", () => {
+  // -280 laying $5.00 wins 5 * 100/280 = $1.79
+  assert.equal(winningsFor(-280, 500), 179);
+  // -200 laying $10 wins $5
+  assert.equal(winningsFor(-200, 1000), 500);
+});
+
+test("winningsFor: what you collect on an underdog", () => {
+  // +280 risking $5.00 wins $14.00
+  assert.equal(winningsFor(280, 500), 1400);
+  assert.equal(winningsFor(100, 500), 500);
+});
+
+test("winningsFor never rounds a real bet away to nothing", () => {
+  assert.ok(winningsFor(-5000, 1) >= 1);
+});
+
+test("winningsFor rejects a nonsense risk", () => {
+  assert.throws(() => winningsFor(-110, 0));
+  assert.throws(() => winningsFor(-110, -500));
+  assert.throws(() => winningsFor(-110, 5.5));
+});
+
+test("headToHead: a straight-up bet is the same on both sides", () => {
+  assert.deepEqual(headToHead(null, 500), { yourRisk: 500, theirRisk: 500 });
+});
+
+test("headToHead: a priced bet is asymmetric", () => {
+  // Backing a -280 favourite: you put up $5 to win $1.79, so that is what
+  // they are putting up.
+  assert.deepEqual(headToHead(-280, 500), { yourRisk: 500, theirRisk: 179 });
+  // Backing the +280 dog: you put up $5 to win $14.
+  assert.deepEqual(headToHead(280, 500), { yourRisk: 500, theirRisk: 1400 });
+});
+
+test("the favourite risks more than the underdog for the same prize", () => {
+  const backingFavourite = headToHead(-280, 500);
+  assert.ok(backingFavourite.yourRisk > backingFavourite.theirRisk);
+  const backingDog = headToHead(280, 500);
+  assert.ok(backingDog.yourRisk < backingDog.theirRisk);
 });
 
 test("buildMarkets produces all five markets", () => {
