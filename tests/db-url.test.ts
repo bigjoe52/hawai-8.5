@@ -104,3 +104,74 @@ test("the missing-URL message names every variable it checked", () => {
   }
   assert.ok(msg.includes(".env.example"));
 });
+
+/* --- Custom prefixes ------------------------------------------------------
+ * Some integrations offer a "custom prefix" at setup time, which renames the
+ * variables they create (DATABASE_URL -> STORAGE_DATABASE_URL). Blank is the
+ * right answer, but the app should cope if one was set anyway.
+ */
+
+test("a prefixed DATABASE_URL is still found", () => {
+  const r = resolveDatabaseUrl({ STORAGE_DATABASE_URL: REAL });
+  assert.equal(r?.url, REAL);
+  assert.equal(r?.source, "STORAGE_DATABASE_URL");
+  assert.equal(r?.isPooled, true);
+});
+
+test("a prefixed POSTGRES_URL is still found", () => {
+  assert.equal(resolveDatabaseUrl({ MY_APP_POSTGRES_URL: REAL })?.source, "MY_APP_POSTGRES_URL");
+});
+
+test("an unprefixed name still beats a prefixed one", () => {
+  const r = resolveDatabaseUrl({
+    STORAGE_DATABASE_URL: "postgresql://u:p@prefixed/db",
+    DATABASE_URL: REAL,
+  });
+  assert.equal(r?.source, "DATABASE_URL");
+});
+
+test("a prefixed pooled URL beats a prefixed unpooled one", () => {
+  const r = resolveDatabaseUrl({
+    STORAGE_POSTGRES_URL_NON_POOLING: "postgresql://u:p@direct/db",
+    STORAGE_DATABASE_URL: REAL,
+  });
+  assert.equal(r?.source, "STORAGE_DATABASE_URL");
+  assert.equal(r?.isPooled, true);
+});
+
+test("a prefixed unpooled URL is flagged as unpooled", () => {
+  const r = resolveDatabaseUrl({ STORAGE_POSTGRES_URL_NON_POOLING: REAL });
+  assert.equal(r?.isPooled, false);
+});
+
+test("prefix matching requires an underscore boundary", () => {
+  // MYDATABASE_URL is somebody else's variable, not a prefixed DATABASE_URL.
+  assert.equal(resolveDatabaseUrl({ MYDATABASE_URL: REAL }), null);
+});
+
+test("unrelated variables are never mistaken for a connection string", () => {
+  assert.equal(
+    resolveDatabaseUrl({
+      SESSION_SECRET: "abc123",
+      SLEEPER_LEAGUE_ID: "123456",
+      PATH: "/usr/bin",
+      NEXT_PUBLIC_URL: "https://example.com",
+    }),
+    null,
+  );
+});
+
+test("prefixed placeholders are ignored like unprefixed ones", () => {
+  assert.equal(
+    resolveDatabaseUrl({ STORAGE_DATABASE_URL: "postgresql://user:password@host/dbname" }),
+    null,
+  );
+});
+
+test("prefixed resolution is deterministic with several matches", () => {
+  const env = { B_DATABASE_URL: "postgresql://u:p@b/db", A_DATABASE_URL: "postgresql://u:p@a/db" };
+  const first = resolveDatabaseUrl(env)?.source;
+  assert.equal(first, "A_DATABASE_URL");
+  // Same answer regardless of key insertion order.
+  assert.equal(resolveDatabaseUrl({ A_DATABASE_URL: env.A_DATABASE_URL, B_DATABASE_URL: env.B_DATABASE_URL })?.source, first);
+});

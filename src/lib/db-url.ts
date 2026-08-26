@@ -5,7 +5,8 @@
  * Neon and most integrations set DATABASE_URL, some Vercel-native and
  * Supabase setups set POSTGRES_URL, Prisma-flavoured ones set
  * POSTGRES_PRISMA_URL. Rather than making you rename anything by hand, we
- * look for all of them in a sensible order.
+ * look for all of them in a sensible order -- including prefixed variants
+ * like STORAGE_DATABASE_URL, in case a custom prefix was set at setup time.
  *
  * POOLED connection strings come first. On serverless every request can open
  * its own connection, and a direct (unpooled) connection will hit the
@@ -53,9 +54,36 @@ function isPlaceholder(value: string): boolean {
   );
 }
 
+/**
+ * Some integrations let you set a CUSTOM PREFIX on the variables they create,
+ * which turns DATABASE_URL into e.g. STORAGE_DATABASE_URL. Rather than fail on
+ * a name we didn't anticipate, fall back to matching any variable that ENDS
+ * with one of the known names.
+ *
+ * Sorted for determinism: with several prefixed matches, the same one wins
+ * every time instead of depending on environment ordering.
+ */
+function findBySuffix(
+  env: Record<string, string | undefined>,
+  suffixes: readonly string[],
+): { name: string; value: string } | null {
+  const matches: Array<{ name: string; value: string }> = [];
+  for (const name of Object.keys(env).sort()) {
+    const value = env[name];
+    if (!value || isPlaceholder(value)) continue;
+    // Require a `_` before the suffix so PREFIX_DATABASE_URL matches but an
+    // unrelated name that merely happens to end in those letters does not.
+    if (suffixes.some((s) => name === s || name.endsWith(`_${s}`))) {
+      matches.push({ name, value: value.trim() });
+    }
+  }
+  return matches[0] ?? null;
+}
+
 export function resolveDatabaseUrl(
   env: Record<string, string | undefined> = process.env,
 ): ResolvedUrl | null {
+  // 1. Exact standard names, pooled first.
   for (const name of POOLED_VARS) {
     const value = env[name];
     if (value && !isPlaceholder(value)) {
@@ -68,6 +96,16 @@ export function resolveDatabaseUrl(
       return { url: value.trim(), source: name, isPooled: false };
     }
   }
+
+  // 2. Prefixed variants, e.g. STORAGE_DATABASE_URL.
+  const pooled = findBySuffix(env, POOLED_VARS);
+  if (pooled) return { url: pooled.value, source: pooled.name, isPooled: true };
+
+  const unpooled = findBySuffix(env, UNPOOLED_VARS);
+  if (unpooled) {
+    return { url: unpooled.value, source: unpooled.name, isPooled: false };
+  }
+
   return null;
 }
 

@@ -62,6 +62,15 @@ functions can otherwise exhaust the database's connection limit. The app picks
 the pooled variable automatically when both are present, and logs a warning if
 it has to fall back to a direct connection.
 
+**A custom prefix is fine too.** If the integration offers a "custom prefix"
+field, leaving it blank gives the standard names. If one does get set, the app
+also matches prefixed variants like `STORAGE_DATABASE_URL`.
+
+**Check the Development environment** when the integration asks which
+environments to apply to. `vercel env pull` reads the Development environment,
+so without it the connection string never reaches your machine and
+`npm run db:setup` has nothing to connect to.
+
 **Placeholders count as unset.** If you paste the `.env.example` sample value
 (`postgresql://user:password@host/dbname`) anywhere, the app ignores it and
 tells you the variable is missing — rather than failing with a confusing DNS
