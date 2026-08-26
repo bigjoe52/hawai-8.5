@@ -462,6 +462,42 @@ export async function autoSettleAction(): Promise<void> {
  * never changes, whereas people rename their team most weeks and occasionally
  * change their handle. Do this once and it holds for good.
  */
+export async function linkAllSleeperAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+
+  // Fields arrive as sleeper_<userId>. Save them in one go, so the
+  // commissioner sets every dropdown and presses one button -- rather than
+  // filling the whole list and having only the last row stick.
+  const updates: Array<{ userId: number; sleeperUserId: string | null }> = [];
+  for (const [field, raw] of formData.entries()) {
+    if (!field.startsWith("sleeper_")) continue;
+    const userId = Number(field.slice("sleeper_".length));
+    if (!Number.isInteger(userId)) continue;
+    const value = String(raw).trim();
+    updates.push({ userId, sleeperUserId: value === "" ? null : value });
+  }
+  if (updates.length === 0) return;
+
+  // Two members pointing at the same Sleeper account would make the lowest
+  // scorer ambiguous, so refuse the whole save rather than half-applying it.
+  const taken = new Map<string, number>();
+  for (const u of updates) {
+    if (!u.sleeperUserId) continue;
+    if (taken.has(u.sleeperUserId)) return;
+    taken.set(u.sleeperUserId, u.userId);
+  }
+
+  for (const u of updates) {
+    await sql`
+      UPDATE users SET sleeper_user_id = ${u.sleeperUserId} WHERE id = ${u.userId}
+    `;
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/parlay");
+  revalidatePath("/");
+}
+
 export async function linkSleeperAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const userId = Number(formData.get("userId"));

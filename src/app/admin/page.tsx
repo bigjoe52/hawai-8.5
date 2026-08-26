@@ -16,7 +16,7 @@ import {
   setStakeAction,
   settleSideBetAction,
   autoSettleAction,
-  linkSleeperAction,
+  linkAllSleeperAction,
 } from "@/lib/actions.ts";
 import {
   Nav,
@@ -59,6 +59,8 @@ export default async function AdminPage({
       ? getLeagueUsers(leagueId)
       : Promise.resolve({ ok: false as const, error: "SLEEPER_LEAGUE_ID isn't set." }),
   ]);
+
+  const linkedCount = members.filter((m) => m.sleeperUserId).length;
 
   return (
     <>
@@ -211,48 +213,100 @@ export default async function AdminPage({
 
         <Card
           title="Sleeper accounts"
-          subtitle="Link each member to their Sleeper account. Do this once — it uses Sleeper's permanent user id, so it survives team and handle changes."
+          subtitle="Link each member to their Sleeper account, then save. Uses Sleeper's permanent user id, so it survives team and handle changes."
         >
           {!sleeperUsers.ok ? (
             <p className="text-sm text-white/50">
               Can&apos;t reach Sleeper to list accounts. {sleeperUsers.error}
             </p>
           ) : (
-            <ul className="space-y-2">
-              {members.map((m) => (
-                <li
-                  key={m.id}
-                  className="flex flex-wrap items-center gap-3 rounded-md border border-white/10 px-3 py-2"
-                >
-                  <span className="min-w-32 flex-1 text-sm text-white/80">
-                    {m.displayName}
-                    <span className="ml-2 text-xs text-white/30">{m.username}</span>
-                    {m.isAdmin && (
-                      <span className="ml-2 text-xs text-sunset-300">commissioner</span>
-                    )}
-                  </span>
-                  <form action={linkSleeperAction} className="flex items-center gap-2">
-                    <input type="hidden" name="userId" value={m.id} />
-                    <select
-                      name="sleeperUserId"
-                      defaultValue={m.sleeperUserId ?? ""}
-                      className={`${inputClass} w-56 py-1.5`}
+            <form action={linkAllSleeperAction}>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-white/60">
+                  <span
+                    className={
+                      linkedCount === members.length
+                        ? "text-surf-300"
+                        : "text-sunset-300"
+                    }
+                  >
+                    {linkedCount} of {members.length}
+                  </span>{" "}
+                  linked
+                  {linkedCount < members.length && (
+                    <span className="text-white/40">
+                      {" "}
+                      — the placer can&apos;t be worked out until everyone is
+                    </span>
+                  )}
+                </p>
+                <button type="submit" className={buttonClass}>
+                  Save all links
+                </button>
+              </div>
+
+              <ul className="space-y-2">
+                {members.map((m) => {
+                  const linked = sleeperUsers.data.find(
+                    (su) => su.userId === m.sleeperUserId,
+                  );
+                  return (
+                    <li
+                      key={m.id}
+                      className={`flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 ${
+                        m.sleeperUserId
+                          ? "border-surf-500/25 bg-surf-500/[0.04]"
+                          : "border-white/10"
+                      }`}
                     >
-                      <option value="">— not linked —</option>
-                      {sleeperUsers.data.map((su) => (
-                        <option key={su.userId} value={su.userId}>
-                          @{su.displayName}
-                          {su.teamName ? ` · ${su.teamName}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="submit" className={ghostButtonClass}>
-                      Link
-                    </button>
-                  </form>
-                </li>
-              ))}
-            </ul>
+                      <span className="min-w-28 flex-1 text-sm text-white/80">
+                        {m.displayName}
+                        <span className="ml-2 text-xs text-white/30">
+                          {m.username}
+                        </span>
+                        {m.isAdmin && (
+                          <span className="ml-2 text-xs text-sunset-300">
+                            commissioner
+                          </span>
+                        )}
+                      </span>
+
+                      <span className="w-40 shrink-0 text-xs">
+                        {linked ? (
+                          <span className="text-surf-300">
+                            ✓ @{linked.displayName}
+                          </span>
+                        ) : m.sleeperUserId ? (
+                          <span className="text-amber-300">
+                            ✓ linked (not in league)
+                          </span>
+                        ) : (
+                          <span className="text-white/30">not linked</span>
+                        )}
+                      </span>
+
+                      <select
+                        name={`sleeper_${m.id}`}
+                        defaultValue={m.sleeperUserId ?? ""}
+                        className={`${inputClass} w-56 py-1.5`}
+                      >
+                        <option value="">— not linked —</option>
+                        {sleeperUsers.data.map((su) => (
+                          <option key={su.userId} value={su.userId}>
+                            @{su.displayName}
+                            {su.teamName ? ` · ${su.teamName}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <button type="submit" className={`${buttonClass} mt-4`}>
+                Save all links
+              </button>
+            </form>
           )}
           <p className="mt-3 text-xs text-white/40">
             Members themselves are managed with the seed script — see the README.
