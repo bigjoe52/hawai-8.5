@@ -25,7 +25,7 @@ export type Parlay = {
   season: number;
   week: number;
   status: "open" | "locked" | "won" | "lost";
-  stakePerUserCents: number;
+  stakeCents: number;
   notes: string | null;
   legs: ParlayLeg[];
 };
@@ -79,10 +79,10 @@ export async function getOrCreateParlay(
     season: number;
     week: number;
     status: Parlay["status"];
-    stake_per_user_cents: number;
+    stake_cents: number;
     notes: string | null;
   }>`
-    SELECT id, season, week, status, stake_per_user_cents, notes
+    SELECT id, season, week, status, stake_cents, notes
     FROM parlays WHERE season = ${season} AND week = ${week}
   `;
 
@@ -99,7 +99,7 @@ export async function getOrCreateParlay(
     season: parlay.season,
     week: parlay.week,
     status: parlay.status,
-    stakePerUserCents: parlay.stake_per_user_cents,
+    stakeCents: parlay.stake_cents,
     notes: parlay.notes,
     legs: legs.map((l: any) => ({
       id: l.id,

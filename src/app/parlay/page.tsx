@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth.ts";
 import { configProblems } from "@/lib/config.ts";
 import SetupNeeded from "@/components/setup-needed.tsx";
 import { getOrCreateParlay, listMembers } from "@/lib/queries.ts";
-import { currentWeek } from "@/lib/week.ts";
+import { currentWeek, normaliseWeek } from "@/lib/week.ts";
 import {
   combinedDecimalOdds,
   decimalToAmerican,
@@ -33,7 +33,7 @@ export default async function ParlayPage({
   const params = await searchParams;
   const ctx = await currentWeek();
   const season = Number(params.season) || ctx.season;
-  const week = Number(params.week) || ctx.week;
+  const week = normaliseWeek(params.week, ctx.week);
 
   const [parlay, members] = await Promise.all([
     getOrCreateParlay(season, week),
@@ -47,14 +47,14 @@ export default async function ParlayPage({
 
   const outcome = resolveParlay(parlay.legs);
   const combined = parlay.legs.length > 0 ? combinedDecimalOdds(parlay.legs) : 1;
-  const totalStake = parlay.stakePerUserCents * members.length;
+  const stake = parlay.stakeCents;
 
   // What the ticket would return if every remaining leg cashes.
   const hypothetical = parlay.legs.map((l) => ({
     oddsAmerican: l.oddsAmerican,
     status: l.status === "pending" ? ("win" as const) : l.status,
   }));
-  const potentialPayout = parlayPayoutCents(hypothetical, totalStake);
+  const potentialPayout = parlayPayoutCents(hypothetical, stake);
 
   const busted = parlay.legs.filter((l) => l.status === "loss");
 
@@ -69,7 +69,8 @@ export default async function ParlayPage({
               <span className="text-white/40">· {season}</span>
             </h1>
             <p className="mt-1 text-sm text-white/50">
-              Everyone adds one leg. All of them have to hit.
+              Everyone adds one leg. All of them have to hit. Fresh ticket every
+              week.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -83,9 +84,10 @@ export default async function ParlayPage({
           accent={outcome === "won"}
           title="The ticket"
           subtitle={
-            parlay.legs.length === 0
-              ? "Nobody has added a leg yet."
-              : `${parlay.legs.length} of ${members.length} legs in.`
+            `${formatCents(stake)} ticket · ` +
+            (parlay.legs.length === 0
+              ? "nobody has added a leg yet."
+              : `${parlay.legs.length} of ${members.length} legs in.`)
           }
         >
           {parlay.legs.length === 0 ? (
@@ -145,27 +147,16 @@ export default async function ParlayPage({
                 value={
                   outcome === "lost"
                     ? "busted"
-                    : totalStake > 0
-                      ? formatCents(
-                          outcome === "won"
-                            ? parlayPayoutCents(parlay.legs, totalStake)
-                            : potentialPayout,
-                        )
-                      : "set a stake"
+                    : formatCents(
+                        outcome === "won"
+                          ? parlayPayoutCents(parlay.legs, stake)
+                          : potentialPayout,
+                      )
                 }
                 highlight={outcome === "won"}
                 muted={outcome === "lost"}
               />
-              <Stat
-                label="Pot"
-                value={
-                  totalStake > 0
-                    ? `${formatCents(totalStake)} (${formatCents(
-                        parlay.stakePerUserCents,
-                      )} each)`
-                    : "not set"
-                }
-              />
+              <Stat label="Stake" value={formatCents(stake)} />
             </dl>
           )}
 

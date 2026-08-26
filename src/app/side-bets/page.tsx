@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth.ts";
 import { configProblems } from "@/lib/config.ts";
 import SetupNeeded from "@/components/setup-needed.tsx";
 import { listSideBets } from "@/lib/queries.ts";
-import { currentWeek } from "@/lib/week.ts";
+import { currentWeek, normaliseWeek } from "@/lib/week.ts";
 import { getWeekMatchups, getWeekProjections } from "@/lib/sleeper.ts";
 import { formatCents } from "@/lib/odds.ts";
 import { takeSideBetAction, cancelSideBetAction } from "@/lib/actions.ts";
@@ -36,7 +36,7 @@ export default async function SideBetsPage({
 
   const params = await searchParams;
   const ctx = await currentWeek();
-  const week = Number(params.week) || ctx.week;
+  const week = normaliseWeek(params.week, ctx.week);
   const season = ctx.season;
 
   const leagueId = process.env.SLEEPER_LEAGUE_ID;
@@ -106,7 +106,7 @@ export default async function SideBetsPage({
               season={season}
               week={week}
               matchups={matchups.data}
-              projections={projections.data}
+              projections={Object.fromEntries(projections.data)}
             />
             <p className="mt-4 text-xs text-white/40">
               Clicking a side puts a $5 bet on the board for someone else to

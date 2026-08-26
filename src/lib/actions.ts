@@ -173,7 +173,7 @@ export async function setStakeAction(formData: FormData): Promise<void> {
   }
 
   await sql`
-    UPDATE parlays SET stake_per_user_cents = ${cents} WHERE id = ${parlayId}
+    UPDATE parlays SET stake_cents = ${cents} WHERE id = ${parlayId}
   `;
   revalidatePath("/parlay");
   revalidatePath("/admin");

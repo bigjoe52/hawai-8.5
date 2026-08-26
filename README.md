@@ -192,10 +192,28 @@ your league is live.
 
 **The commissioner:**
 1. Before kickoff: **Commissioner → Mark locked**. Legs freeze.
-2. Set the buy-in per person so the site can show the payout.
-3. After the games: grade each leg win/loss/push, and settle the matched
+2. After the games: grade each leg win/loss/push, and settle the matched
    side bets.
-4. The ledger updates itself.
+3. The ledger updates itself.
+
+### The week
+The site keeps its own schedule rather than asking Sleeper, so everyone always
+sees the same week:
+
+- Week 1 runs until **3am Eastern on Tuesday 15 September 2026**.
+- Every **Tuesday at 3am Eastern** after that, the week ticks over.
+- 3am Tuesday means Monday Night Football is long finished.
+- It stops at week 18.
+
+The parlay page still has a week selector for looking back at earlier weeks; it
+just opens on the current one. To change the schedule, edit the constants at
+the top of `src/lib/week.ts`.
+
+### The stake
+Each week's parlay is a flat **$10 ticket** for the league — not a per-person
+buy-in, and there is no pot. It resets every week; a new ticket opens
+automatically. The commissioner can change a given week's stake under
+**Commissioner**.
 
 ---
 
@@ -241,7 +259,7 @@ src/
     db-url.ts          finds the connection string, any provider  <- unit tested
     queries.ts         database reads
     actions.ts         database writes (all of them)
-    week.ts            what NFL week is it
+    week.ts            the league's week schedule           <- unit tested
 db/schema.sql          the tables
 scripts/               setup and seeding
 tests/                 unit tests

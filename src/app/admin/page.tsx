@@ -7,7 +7,7 @@ import {
   listUnsettledBets,
   listMembers,
 } from "@/lib/queries.ts";
-import { currentWeek } from "@/lib/week.ts";
+import { currentWeek, normaliseWeek } from "@/lib/week.ts";
 import { formatCents, formatAmerican } from "@/lib/odds.ts";
 import {
   gradeLegAction,
@@ -45,7 +45,7 @@ export default async function AdminPage({
 
   const params = await searchParams;
   const ctx = await currentWeek();
-  const week = Number(params.week) || ctx.week;
+  const week = normaliseWeek(params.week, ctx.week);
 
   const [parlay, unsettled, members] = await Promise.all([
     getOrCreateParlay(ctx.season, week),
@@ -91,12 +91,12 @@ export default async function AdminPage({
             <input type="hidden" name="parlayId" value={parlay.id} />
             <div>
               <label htmlFor="stake" className="mb-1.5 block text-sm text-white/70">
-                Buy-in per person
+                Ticket stake
               </label>
               <input
                 id="stake"
                 name="stake"
-                defaultValue={(parlay.stakePerUserCents / 100).toFixed(2)}
+                defaultValue={(parlay.stakeCents / 100).toFixed(2)}
                 inputMode="decimal"
                 className={`${inputClass} w-32 font-mono`}
               />
@@ -105,8 +105,7 @@ export default async function AdminPage({
               Save
             </button>
             <p className="text-xs text-white/40">
-              Pot = this × {members.length} players ={" "}
-              {formatCents(parlay.stakePerUserCents * members.length)}
+              Flat stake for the whole ticket. Defaults to $10 each week.
             </p>
           </form>
         </Card>

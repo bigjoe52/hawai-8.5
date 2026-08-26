@@ -5,7 +5,7 @@
  *
  *   npm run db:setup
  */
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { connect } from "./db-connect.mjs";
 import { resolveDatabaseUrl, missingUrlMessage } from "../src/lib/db-url.ts";
 import { loadEnv } from "./load-env.mjs";
@@ -41,6 +41,37 @@ for (const statement of statements) {
     console.error(`        ${err.message}`);
     await client.end();
     process.exit(1);
+  }
+}
+
+/* --- Migrations ------------------------------------------------------------
+ * Applied after the schema, each file whole rather than split into statements,
+ * because a migration may contain a DO $$ ... $$ block whose internal
+ * semicolons must not be treated as statement boundaries.
+ */
+const migrationsDir = new URL("../db/migrations/", import.meta.url);
+let migrations = [];
+try {
+  migrations = (await readdir(migrationsDir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+} catch {
+  // No migrations directory yet -- nothing to do.
+}
+
+if (migrations.length > 0) {
+  console.log(`\nApplying ${migrations.length} migration(s)...`);
+  for (const file of migrations) {
+    const sqlText = await readFile(new URL(file, migrationsDir), "utf8");
+    try {
+      await client.query(sqlText);
+      console.log(`  ok  ${file}`);
+    } catch (err) {
+      console.error(`  FAIL  ${file}`);
+      console.error(`        ${err.message}`);
+      await client.end();
+      process.exit(1);
+    }
   }
 }
 

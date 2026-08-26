@@ -23,8 +23,9 @@ CREATE TABLE IF NOT EXISTS parlays (
   -- won / lost = graded
   status               TEXT NOT NULL DEFAULT 'open'
                        CHECK (status IN ('open','locked','won','lost')),
-  stake_per_user_cents INTEGER NOT NULL DEFAULT 0
-                       CHECK (stake_per_user_cents >= 0),
+  -- Flat stake for the whole ticket, not per person. $10 by default.
+  stake_cents          INTEGER NOT NULL DEFAULT 1000
+                       CHECK (stake_cents >= 0),
   notes                TEXT,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   locked_at            TIMESTAMPTZ,

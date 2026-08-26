@@ -55,12 +55,6 @@ export default async function Dashboard() {
           </h1>
           <p className="mt-1 text-sm text-white/50">
             Week {ctx.week} of the {ctx.season} season
-            {!ctx.fromSleeper && (
-              <span className="text-amber-300/70">
-                {" "}
-                · estimated, Sleeper unreachable
-              </span>
-            )}
           </p>
         </div>
 
