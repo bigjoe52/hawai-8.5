@@ -102,14 +102,52 @@ On your own machine:
 ```bash
 git clone <this repo> && cd hawai-8.5
 npm install
+```
 
-# Pull the environment variables down from Vercel
-npx vercel link
-npx vercel env pull .env.local
+Now the app needs to know how to reach the database. **Copy the connection
+string in by hand** — it is the shortest path and involves no extra tooling:
 
+1. In Vercel: **your project → Settings → Environment Variables**
+2. Find `DATABASE_URL`, reveal it, and copy the value
+3. Create a file called `.env.local` in the project folder containing:
+
+```
+DATABASE_URL="paste-the-value-here"
+```
+
+Then:
+
+```bash
+npm run db:check    # confirms the connection works
 npm run db:setup    # creates the tables
 npm run db:seed     # creates the accounts and prints their passwords
 ```
+
+`db:check` is worth running first — it reports exactly what is wrong
+(unreachable host, bad password, missing tables) instead of failing obscurely
+two commands later.
+
+> `.env.local` is listed in `.gitignore`, so your credentials never get
+> committed. Do not remove that line.
+
+<details>
+<summary>Optional: use the Vercel CLI instead of copying by hand</summary>
+
+```bash
+npx vercel login    # opens a browser to authorise this machine
+npx vercel link     # connects this folder to the Vercel project
+npx vercel env pull .env.local
+```
+
+This writes `.env.local` for you. It requires the **Development** environment
+to be enabled on the database integration, otherwise the file comes back
+without a connection string.
+
+If the browser says *"Couldn't verify the code"*, the login code expired —
+they are only valid for a few minutes. Press `Ctrl+C` in the terminal, run
+`npx vercel login` again, and finish in the browser straight away.
+
+</details>
 
 `db:seed` prints ten usernames and passwords **once**. Copy them somewhere
 before you close the terminal, then hand them out.
@@ -146,6 +184,7 @@ your league is live.
 npm run dev        # local dev server at http://localhost:3000
 npm run build      # production build
 npm test           # unit tests for the betting and ledger math
+npm run db:check   # is the database reachable, and set up?
 npm run db:setup   # create tables (safe to re-run)
 npm run db:seed    # add any new members from the LEAGUE list
 node scripts/seed-users.mjs --reset joe   # reset one person's password
