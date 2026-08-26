@@ -6,7 +6,8 @@ import { getOrCreateParlay, listMembers } from "@/lib/queries.ts";
 import { currentWeek, normaliseWeek } from "@/lib/week.ts";
 import { resolvePlacer } from "@/lib/placer.ts";
 import { getNflMarkets } from "@/lib/polymarket.ts";
-import MarketPicker from "@/components/market-picker.tsx";
+import NflBoard from "@/components/nfl-board.tsx";
+import { buildBoard } from "@/lib/nfl-board.ts";
 import BumBanner from "@/components/bum-banner.tsx";
 import {
   combinedDecimalOdds,
@@ -44,11 +45,19 @@ export default async function ParlayPage({
     listMembers(),
   ]);
 
-  // Who has to place it, and what they can pick from.
+  // Who has to place it, and this week's NFL slate to pick from.
   const [placer, markets] = await Promise.all([
     resolvePlacer(season, week),
     getNflMarkets(),
   ]);
+
+  // Dates cannot cross into a client component, so send them as strings.
+  const games = markets.ok
+    ? buildBoard(markets.data, week).map((g) => ({
+        ...g,
+        kickoff: g.kickoff ? g.kickoff.toISOString() : null,
+      }))
+    : [];
 
   const myLeg = parlay.legs.find((l) => l.userId === user.id);
   const missing = members.filter(
@@ -181,6 +190,25 @@ export default async function ParlayPage({
           )}
         </Card>
 
+        {/* ---- This week's NFL slate ---- */}
+        {parlay.status === "open" && (
+          markets.ok ? (
+            <Card
+              title={`Week ${week} NFL board`}
+              subtitle="Live prices from Polymarket. Click any line to use it as your leg."
+            >
+              <NflBoard games={games} week={week} />
+            </Card>
+          ) : (
+            <Card title={`Week ${week} NFL board`}>
+              <p className="text-sm text-white/50">
+                Live prices unavailable — {markets.error} You can still type a
+                leg in below.
+              </p>
+            </Card>
+          )
+        )}
+
         {/* ---- Your leg ---- */}
         {parlay.status === "open" ? (
           <Card
@@ -191,22 +219,6 @@ export default async function ParlayPage({
                 : "Pick anything on the NFL slate. One per person."
             }
           >
-            {markets.ok ? (
-              <div className="mb-5 rounded-lg border border-white/10 bg-deep-900/40 p-4">
-                <h3 className="mb-1 text-sm font-medium text-white">
-                  Pick from live markets
-                </h3>
-                <p className="mb-3 text-xs text-white/40">
-                  Real prices, so nobody has to guess what a leg is worth.
-                </p>
-                <MarketPicker markets={markets.data} />
-              </div>
-            ) : (
-              <p className="mb-4 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-white/40">
-                Live market prices unavailable — {markets.error}
-              </p>
-            )}
-
             <LegForm parlayId={parlay.id} existing={myLeg ?? null} />
             {myLeg && (
               <form action={deleteLegAction} className="mt-3">

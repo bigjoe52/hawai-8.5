@@ -123,3 +123,45 @@ export function normaliseWeek(value: unknown, fallback: number): number {
   if (!Number.isInteger(week) || week < 1 || week > LAST_WEEK) return fallback;
   return week;
 }
+
+/**
+ * The window a given week's games fall in.
+ *
+ * A week runs from its 3am Eastern Tuesday rollover to the next one, so any
+ * game kicking off inside that window belongs to that week. Used to show only
+ * this week's NFL slate and leave the rest alone.
+ *
+ * Returned as UTC instants. Week 1 has no rollover before it, so it opens a
+ * week earlier than its end -- wide enough to catch the Thursday opener.
+ */
+export function weekWindow(week: number): { start: Date; end: Date } {
+  const clamped = Math.min(Math.max(week, 1), LAST_WEEK);
+
+  // The Tuesday that starts week N, in Eastern calendar terms. Week 2 is the
+  // anchor; every other week is a multiple of seven days from it.
+  const startOfWeek = (w: number) => {
+    const offsetDays = (w - 2) * 7;
+    const base = Date.UTC(WEEK_2_DATE.year, WEEK_2_DATE.month - 1, WEEK_2_DATE.day);
+    return new Date(base + offsetDays * 86_400_000);
+  };
+
+  const start = startOfWeek(clamped);
+  const end = startOfWeek(clamped + 1);
+
+  // Eastern 3am is 07:00 or 08:00 UTC depending on daylight saving. Using
+  // 08:00 for both ends keeps the window a clean seven days and cannot
+  // misplace a game -- nothing kicks off between 3am and 4am Eastern.
+  start.setUTCHours(8, 0, 0, 0);
+  end.setUTCHours(8, 0, 0, 0);
+
+  return { start, end };
+}
+
+/** Which week a kickoff time belongs to, or null if outside the season. */
+export function weekOfKickoff(kickoff: Date): number | null {
+  for (let w = 1; w <= LAST_WEEK; w++) {
+    const { start, end } = weekWindow(w);
+    if (kickoff >= start && kickoff < end) return w;
+  }
+  return null;
+}

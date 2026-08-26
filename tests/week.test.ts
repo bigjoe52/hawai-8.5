@@ -106,3 +106,57 @@ test("normaliseWeek accepts real weeks and rejects nonsense", () => {
   assert.equal(normaliseWeek(undefined, 7), 7);
   assert.equal(normaliseWeek("2.5", 7), 7);
 });
+
+/* --- Week windows, for filtering the NFL slate ---------------------------- */
+
+import { weekWindow, weekOfKickoff } from "../src/lib/week.ts";
+
+test("a week window is exactly seven days", () => {
+  for (const w of [2, 5, 10, 17]) {
+    const { start, end } = weekWindow(w);
+    assert.equal((end.getTime() - start.getTime()) / 86_400_000, 7, `week ${w}`);
+  }
+});
+
+test("consecutive weeks butt up against each other with no gap", () => {
+  for (let w = 1; w < 18; w++) {
+    assert.equal(weekWindow(w).end.getTime(), weekWindow(w + 1).start.getTime());
+  }
+});
+
+test("week 2 starts on the anchor Tuesday", () => {
+  const { start } = weekWindow(2);
+  assert.equal(start.toISOString().slice(0, 10), "2026-09-15");
+});
+
+test("a Sunday game lands in the right week", () => {
+  // Sunday 20 September 2026 is inside week 2 (15th to 22nd).
+  assert.equal(weekOfKickoff(new Date("2026-09-20T17:00:00Z")), 2);
+  // Sunday 27 September is week 3.
+  assert.equal(weekOfKickoff(new Date("2026-09-27T17:00:00Z")), 3);
+});
+
+test("a Thursday opener lands in its own week, not the previous one", () => {
+  // Thursday 17 September 2026, week 2's Thursday night game.
+  assert.equal(weekOfKickoff(new Date("2026-09-17T00:20:00Z")), 2);
+});
+
+test("a Monday night game stays in its own week", () => {
+  // Monday 21 September, late -- still week 2, not week 3.
+  assert.equal(weekOfKickoff(new Date("2026-09-22T00:15:00Z")), 2);
+});
+
+test("week 1 covers the season opener", () => {
+  // Thursday 10 September 2026 is before the week 2 rollover, so week 1.
+  assert.equal(weekOfKickoff(new Date("2026-09-11T00:20:00Z")), 1);
+});
+
+test("dates outside the season belong to no week", () => {
+  assert.equal(weekOfKickoff(new Date("2026-03-01T00:00:00Z")), null);
+  assert.equal(weekOfKickoff(new Date("2027-08-01T00:00:00Z")), null);
+});
+
+test("weekWindow clamps rather than running off the season", () => {
+  assert.deepEqual(weekWindow(0), weekWindow(1));
+  assert.deepEqual(weekWindow(99), weekWindow(18));
+});

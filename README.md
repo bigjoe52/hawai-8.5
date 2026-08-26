@@ -268,13 +268,22 @@ three things per league member:
 
 So renaming your team, or even your handle, doesn't break anything.
 
-### Live odds for parlay legs
-The parlay page lists live NFL markets from **Polymarket's public API** — no
-account, no key — with prices converted from probabilities to American odds.
-Picking a side fills in the leg and its price; you can still edit either.
-Markets that have already resolved are filtered out.
+### The weekly NFL board
+The parlay page shows **that week's NFL slate** — one row per game, with its
+moneyline, spread and total side by side, in kickoff order. Prices come from
+**Polymarket's public API** (no account, no key), converted from probabilities
+to American odds. Click any line to use it as your leg; you can still edit it.
 
-If Polymarket is unreachable the section says so and you type legs in by hand,
+Only actual games appear. Futures, awards and season-long props — Super Bowl
+winner, MVP, "will any team score 40+", season win totals — are filtered out,
+and a game only shows in the week its kickoff falls in. A market a game
+doesn't have reads *not offered* rather than leaving a blank to interpret.
+
+Where Polymarket words a game as "A @ B" the board keeps the home side; where
+it says "A vs B" the board prints it back the same way rather than guessing
+who is at home. Markets that have already resolved are dropped.
+
+If Polymarket is unreachable the board says so and you type legs in by hand,
 same as before.
 
 ### The stake
@@ -321,7 +330,8 @@ src/
     ledger.ts          netting out who owes who            <- unit tested
     crypto.ts          password hashing, session tokens    <- unit tested
     sleeper.ts         read-only Sleeper API client        <- unit tested
-    polymarket.ts      live odds for parlay legs            <- unit tested
+    polymarket.ts      live odds from Polymarket            <- unit tested
+    nfl-board.ts       the week's slate, futures removed     <- unit tested
     placer.ts          who has to place the parlay
     lines.ts           generates the betting board          <- unit tested
     auth.ts            login, session cookies
