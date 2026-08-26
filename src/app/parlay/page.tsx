@@ -7,6 +7,7 @@ import { currentWeek, normaliseWeek } from "@/lib/week.ts";
 import { resolvePlacer } from "@/lib/placer.ts";
 import { getNflMarkets } from "@/lib/polymarket.ts";
 import MarketPicker from "@/components/market-picker.tsx";
+import BumBanner from "@/components/bum-banner.tsx";
 import {
   combinedDecimalOdds,
   decimalToAmerican,
@@ -34,7 +35,7 @@ export default async function ParlayPage({
   if (!user) redirect("/login");
 
   const params = await searchParams;
-  const ctx = await currentWeek();
+  const ctx = currentWeek();
   const season = Number(params.season) || ctx.season;
   const week = normaliseWeek(params.week, ctx.week);
 
@@ -89,29 +90,7 @@ export default async function ParlayPage({
         </div>
 
         {/* ---- Who is placing it ---- */}
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
-            placer.userId === user.id
-              ? "border-sunset-500/50 bg-sunset-500/10 text-sunset-100"
-              : "border-white/10 bg-white/[0.02] text-white/70"
-          }`}
-        >
-          {placer.displayName ? (
-            <>
-              <strong className="font-semibold">
-                {placer.userId === user.id
-                  ? "You're placing this week's parlay."
-                  : `${placer.displayName} is placing this week's parlay.`}
-              </strong>{" "}
-              <span className="text-white/50">({placer.reason})</span>
-            </>
-          ) : (
-            <>
-              <strong className="font-semibold">Placer not decided yet.</strong>{" "}
-              <span className="text-white/50">{placer.reason}</span>
-            </>
-          )}
-        </div>
+        <BumBanner placer={placer} currentUserId={user.id} />
 
         {/* ---- The ticket ---- */}
         <Card

@@ -47,7 +47,7 @@ export default async function AdminPage({
   if (!user.isAdmin) redirect("/");
 
   const params = await searchParams;
-  const ctx = await currentWeek();
+  const ctx = currentWeek();
   const week = normaliseWeek(params.week, ctx.week);
 
   const leagueId = process.env.SLEEPER_LEAGUE_ID;

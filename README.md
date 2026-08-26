@@ -230,11 +230,18 @@ The parlay page still has a week selector for looking back at earlier weeks; it
 just opens on the current one. To change the schedule, edit the constants at
 the top of `src/lib/week.ts`.
 
-### Who places the parlay
-Whoever scored **lowest** in week N places week N+1's ticket. Week 1 has nobody
+### Bum of the week
+Whoever scored **lowest** in week N places week N+1's ticket, and the site is
+not subtle about it — a large, bright banner on the dashboard and the parlay
+page:
+
+> **🗑️ BUM OF THE WEEK**
+> **Biz places the bet.**
+> Score of 78.2 points last week. *(week 1, dead last)*
+
+The bum gets a redder version reading **You place the bet.** Week 1 has nobody
 to punish yet, so it is set with `LEAGUE_FIRST_PLACER` (a username). From then
-on it works itself out from Sleeper's final scores, and the parlay page names
-the person and says why — *"came last in week 3 with 84.20"*.
+on it works itself out from Sleeper's final scores.
 
 This needs each member linked to their Sleeper account, under
 **Commissioner → Sleeper accounts**. Do it once.

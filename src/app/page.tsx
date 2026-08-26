@@ -12,6 +12,8 @@ import {
 import { currentWeek } from "@/lib/week.ts";
 import { resolveParlay, formatCents, formatAmerican } from "@/lib/odds.ts";
 import { pairwiseDebts } from "@/lib/ledger.ts";
+import { resolvePlacer } from "@/lib/placer.ts";
+import BumBanner from "@/components/bum-banner.tsx";
 import { Nav, Page, Card, Badge, Empty, buttonClass } from "@/components/ui.tsx";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +26,14 @@ export default async function Dashboard() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const ctx = await currentWeek();
-  const [parlay, members, bets, unpaid] = await Promise.all([
+  // currentWeek() reads a fixed schedule -- no await needed.
+  const ctx = currentWeek();
+  const [parlay, members, bets, unpaid, placer] = await Promise.all([
     getOrCreateParlay(ctx.season, ctx.week),
     listMembers(),
     listSideBets(ctx.season, ctx.week),
     listUnpaidBets(),
+    resolvePlacer(ctx.season, ctx.week),
   ]);
 
   const myLeg = parlay.legs.find((l) => l.userId === user.id);
@@ -57,6 +61,8 @@ export default async function Dashboard() {
             Week {ctx.week} of the {ctx.season} season
           </p>
         </div>
+
+        <BumBanner placer={placer} currentUserId={user.id} />
 
         {/* The one thing you have to do this week. */}
         {parlay.status === "open" && !myLeg && (

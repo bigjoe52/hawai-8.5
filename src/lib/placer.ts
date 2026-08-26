@@ -16,6 +16,9 @@ export type Placer = {
   displayName: string | null;
   /** How we arrived at it, so the page can explain itself. */
   reason: string;
+  /** What they scored to earn it, and in which week. Null in week 1. */
+  points: number | null;
+  fromWeek: number | null;
 };
 
 /** Week 1's placer, by username. Set LEAGUE_FIRST_PLACER to change it. */
@@ -33,10 +36,15 @@ export async function resolvePlacer(
     WHERE p.season = ${season} AND p.week = ${week}
   `;
   if (cached?.placer_user_id) {
+    // Re-read the score for the wording. It is cheap, and if Sleeper is down
+    // the name still shows -- just without the number.
+    const points = week > 1 ? (await lowestScorer(week - 1))?.points ?? null : null;
     return {
       userId: cached.placer_user_id,
       displayName: cached.display_name,
       reason: week === 1 ? "set for week 1" : `came last in week ${week - 1}`,
+      points,
+      fromWeek: week > 1 ? week - 1 : null,
     };
   }
 
@@ -50,10 +58,18 @@ export async function resolvePlacer(
         userId: null,
         displayName: null,
         reason: `no member called "${FIRST_PLACER}" — set LEAGUE_FIRST_PLACER`,
+        points: null,
+        fromWeek: null,
       };
     }
     await cachePlacer(season, week, user.id);
-    return { userId: user.id, displayName: user.display_name, reason: "set for week 1" };
+    return {
+      userId: user.id,
+      displayName: user.display_name,
+      reason: "set for week 1",
+      points: null,
+      fromWeek: null,
+    };
   }
 
   const loser = await lowestScorer(week - 1);
@@ -62,6 +78,8 @@ export async function resolvePlacer(
       userId: null,
       displayName: null,
       reason: `week ${week - 1} scores aren't in yet`,
+      points: null,
+      fromWeek: week - 1,
     };
   }
 
@@ -69,7 +87,9 @@ export async function resolvePlacer(
   return {
     userId: loser.userId,
     displayName: loser.displayName,
-    reason: `came last in week ${week - 1} with ${loser.points.toFixed(2)}`,
+    reason: `came last in week ${week - 1}`,
+    points: loser.points,
+    fromWeek: week - 1,
   };
 }
 
