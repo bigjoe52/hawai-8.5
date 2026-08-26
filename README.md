@@ -185,7 +185,10 @@ your league is live.
 
 **Everyone:**
 1. Sign in, go to **Parlay**, add one leg with its odds (`-110`, `+250`).
-2. Go to **Side Bets** to post a bet or take somebody else's.
+2. Go to **Side Bets**. **The board** lists auto-generated lines for every
+   fantasy matchup — moneyline, spread, game total, and each team's own total,
+   priced from Sleeper's weekly projections. Click a side to put a $5 bet on
+   the board. Or post your own from scratch below it.
 
 **The commissioner:**
 1. Before kickoff: **Commissioner → Mark locked**. Legs freeze.
@@ -232,6 +235,7 @@ src/
     ledger.ts          netting out who owes who            <- unit tested
     crypto.ts          password hashing, session tokens    <- unit tested
     sleeper.ts         read-only Sleeper API client        <- unit tested
+    lines.ts           generates the betting board          <- unit tested
     auth.ts            login, session cookies
     db.ts              Postgres connection + query helper
     db-url.ts          finds the connection string, any provider  <- unit tested
@@ -261,6 +265,16 @@ admin action check again. Deleting a leg checks `user_id = you`.
 **Taking a bet is race-safe.** Two people clicking "take the other side" at the
 same instant both run `UPDATE ... WHERE status = 'open'`. Only one matches a
 row. The other changes nothing instead of overwriting the first.
+
+**The board is generated, not guessed.** Each team's projection is the sum of
+its starters' projected points from Sleeper, read in the league's own scoring
+format (PPR, half, or standard). Win probability comes from treating both
+scores as normal with a ~25 point spread, which is roughly how much a fantasy
+score actually bounces around week to week; that probability becomes the
+moneyline, with a 4% vig split evenly across the two sides. Spreads and totals
+are the projected difference and sum, quoted to the half point. A lineup whose
+players are mostly missing from the projections is left off the board rather
+than shown as a suspiciously round number.
 
 **Sleeper is read-only and fails soft.** Sleeper's public API needs no key, but
 it can only be read from — bets live in our database. If Sleeper is slow or

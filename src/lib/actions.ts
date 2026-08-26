@@ -304,3 +304,47 @@ export async function settleSideBetAction(formData: FormData): Promise<void> {
   revalidatePath("/ledger");
   revalidatePath("/admin");
 }
+
+/**
+ * Post one of the generated lines as a side bet.
+ *
+ * Same rules as a hand-written bet -- it just arrives pre-filled from the
+ * projections instead of being typed out. The odds are carried on the title so
+ * the price is part of the record, since side bets settle at even money
+ * between two people.
+ */
+export async function postLineBetAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+
+  const season = Number(formData.get("season"));
+  const week = Number(formData.get("week"));
+  const title = String(formData.get("title") ?? "").trim();
+  const proposerSide = String(formData.get("proposerSide") ?? "").trim();
+  const takerSide = String(formData.get("takerSide") ?? "").trim();
+  const matchupId = String(formData.get("matchupId") ?? "").trim();
+  const rawStake = String(formData.get("stake") ?? "");
+
+  if (!title || !proposerSide || !takerSide) return;
+  if (!Number.isInteger(season) || !Number.isInteger(week)) return;
+
+  let stakeCents: number;
+  try {
+    stakeCents = parseStakeToCents(rawStake);
+  } catch {
+    return;
+  }
+  if (stakeCents <= 0) return;
+
+  await sql`
+    INSERT INTO side_bets
+      (season, week, proposer_id, title, details, proposer_side, taker_side,
+       stake_cents, sleeper_matchup_id)
+    VALUES
+      (${season}, ${week}, ${user.id}, ${title},
+       ${"Line generated from Sleeper projections."},
+       ${proposerSide}, ${takerSide}, ${stakeCents}, ${matchupId || null})
+  `;
+
+  revalidatePath("/side-bets");
+  revalidatePath("/");
+}

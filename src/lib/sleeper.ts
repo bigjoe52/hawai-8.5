@@ -12,7 +12,12 @@
  * "unavailable" note instead of taking the whole page down with them.
  */
 
-const BASE = "https://api.sleeper.app/v1";
+// Overridable so the app can be pointed at a stand-in during development;
+// unset in normal use, which is what production runs on.
+const BASE = process.env.SLEEPER_API_BASE ?? "https://api.sleeper.app/v1";
+// Projections live on a different host from the rest of the API.
+const PROJECTIONS_BASE =
+  process.env.SLEEPER_PROJECTIONS_BASE ?? "https://api.sleeper.com";
 const TIMEOUT_MS = 8000;
 
 export type SleeperState = { season: string; week: number; seasonType: string };
@@ -37,6 +42,8 @@ export type SleeperMatchup = {
   matchupId: number;
   rosterId: number;
   points: number;
+  /** Player ids in the starting lineup. Empty slots are filtered out. */
+  starters: string[];
 };
 
 /** Two rosters facing each other in a given week. */
@@ -50,11 +57,11 @@ export type SleeperResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-async function get<T>(path: string): Promise<SleeperResult<T>> {
+async function get<T>(path: string, base: string = BASE): Promise<SleeperResult<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await fetch(`${base}${path}`, {
       signal: controller.signal,
       // Sleeper data changes fast during games; 60s is a reasonable middle
       // ground between live scores and hammering their API.
@@ -155,7 +162,12 @@ export async function getMatchups(
   week: number,
 ): Promise<SleeperResult<SleeperMatchup[]>> {
   const res = await get<
-    Array<{ matchup_id: number | null; roster_id: number; points: number | null }>
+    Array<{
+      matchup_id: number | null;
+      roster_id: number;
+      points: number | null;
+      starters: string[] | null;
+    }>
   >(`/league/${leagueId}/matchups/${week}`);
   if (!res.ok) return res;
   return {
@@ -167,6 +179,8 @@ export async function getMatchups(
         matchupId: m.matchup_id as number,
         rosterId: m.roster_id,
         points: m.points ?? 0,
+        // "0" is Sleeper's placeholder for an unfilled roster slot.
+        starters: (m.starters ?? []).filter((id) => id && id !== "0"),
       })),
   };
 }
@@ -232,4 +246,154 @@ export async function getWeekMatchups(
   if (!rosters.ok) return rosters;
   if (!users.ok) return users;
   return { ok: true, data: pairMatchups(matchups.data, rosters.data, users.data) };
+}
+
+/* ---------------------------------------------------------------------------
+ * Projections
+ * ------------------------------------------------------------------------ */
+
+/** Which points column to read: PPR, half-PPR, or standard. */
+export type ScoringFormat = "ppr" | "half_ppr" | "std";
+
+/**
+ * Work out the league's scoring format from its settings.
+ * `rec` is points per reception: 1 = PPR, 0.5 = half, 0 (or absent) = standard.
+ */
+export async function getLeagueScoring(
+  leagueId: string,
+): Promise<SleeperResult<ScoringFormat>> {
+  const res = await get<{ scoring_settings?: Record<string, number> | null }>(
+    `/league/${leagueId}`,
+  );
+  if (!res.ok) return res;
+  const rec = res.data.scoring_settings?.rec ?? 0;
+  const format: ScoringFormat = rec >= 1 ? "ppr" : rec >= 0.5 ? "half_ppr" : "std";
+  return { ok: true, data: format };
+}
+
+const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
+
+/**
+ * Projected points for every player in a given week, keyed by player id.
+ *
+ * Sleeper's projections endpoint is not part of their documented v1 API and
+ * has been known to change shape, so the parsing below accepts either an array
+ * of rows or an object keyed by player id, and skips anything it can't read
+ * rather than throwing.
+ */
+export async function getProjections(
+  season: string | number,
+  week: number,
+  format: ScoringFormat,
+): Promise<SleeperResult<Map<string, number>>> {
+  const query = [
+    "season_type=regular",
+    ...POSITIONS.map((p) => `position[]=${p}`),
+    `order_by=${format}`,
+  ].join("&");
+
+  const res = await get<unknown>(
+    `/projections/nfl/${season}/${week}?${query}`,
+    PROJECTIONS_BASE,
+  );
+  if (!res.ok) return res;
+
+  const points = parseProjections(res.data, format);
+  if (points.size === 0) {
+    return {
+      ok: false,
+      error: "Sleeper returned no projections for this week.",
+    };
+  }
+  return { ok: true, data: points };
+}
+
+/** Exported for testing: turn whatever Sleeper sent into player id -> points. */
+export function parseProjections(
+  payload: unknown,
+  format: ScoringFormat,
+): Map<string, number> {
+  const key = format === "ppr" ? "pts_ppr" : format === "half_ppr" ? "pts_half_ppr" : "pts_std";
+  const out = new Map<string, number>();
+
+  const read = (playerId: unknown, row: unknown) => {
+    if (typeof playerId !== "string" || !row || typeof row !== "object") return;
+    const stats = (row as { stats?: unknown }).stats;
+    const source = (stats && typeof stats === "object" ? stats : row) as Record<
+      string,
+      unknown
+    >;
+    // Fall back through the formats: a league on half-PPR still wants a number
+    // if only pts_ppr came back.
+    const value =
+      source[key] ?? source.pts_half_ppr ?? source.pts_ppr ?? source.pts_std;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out.set(playerId, value);
+    }
+  };
+
+  if (Array.isArray(payload)) {
+    for (const row of payload) {
+      read((row as { player_id?: unknown })?.player_id, row);
+    }
+  } else if (payload && typeof payload === "object") {
+    for (const [playerId, row] of Object.entries(payload)) read(playerId, row);
+  }
+
+  return out;
+}
+
+/**
+ * Add up each roster's projected score from its starting lineup.
+ * Rosters whose starters are all missing from the projection set are left out
+ * rather than reported as a projected zero.
+ */
+export function projectTeamScores(
+  matchups: SleeperMatchup[],
+  projections: Map<string, number>,
+): Map<number, number> {
+  const totals = new Map<number, number>();
+  for (const m of matchups) {
+    let total = 0;
+    let found = 0;
+    for (const playerId of m.starters) {
+      const points = projections.get(playerId);
+      if (typeof points === "number") {
+        total += points;
+        found += 1;
+      }
+    }
+    // Require at least half the lineup, otherwise the number is meaningless.
+    if (found > 0 && found >= Math.ceil(m.starters.length / 2)) {
+      totals.set(m.rosterId, Math.round(total * 100) / 100);
+    }
+  }
+  return totals;
+}
+
+/** Everything needed to build lines for a week, in one call. */
+export async function getWeekProjections(
+  leagueId: string,
+  season: string | number,
+  week: number,
+): Promise<SleeperResult<Map<number, number>>> {
+  const [matchups, scoring] = await Promise.all([
+    getMatchups(leagueId, week),
+    getLeagueScoring(leagueId),
+  ]);
+  if (!matchups.ok) return matchups;
+  if (!scoring.ok) return scoring;
+
+  const projections = await getProjections(season, week, scoring.data);
+  if (!projections.ok) return projections;
+
+  const totals = projectTeamScores(matchups.data, projections.data);
+  if (totals.size === 0) {
+    return {
+      ok: false,
+      error:
+        "Could not match any starters to Sleeper's projections. Lineups may not be set yet.",
+    };
+  }
+  return { ok: true, data: totals };
 }

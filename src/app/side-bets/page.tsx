@@ -4,7 +4,7 @@ import { configProblems } from "@/lib/config.ts";
 import SetupNeeded from "@/components/setup-needed.tsx";
 import { listSideBets } from "@/lib/queries.ts";
 import { currentWeek } from "@/lib/week.ts";
-import { getWeekMatchups } from "@/lib/sleeper.ts";
+import { getWeekMatchups, getWeekProjections } from "@/lib/sleeper.ts";
 import { formatCents } from "@/lib/odds.ts";
 import { takeSideBetAction, cancelSideBetAction } from "@/lib/actions.ts";
 import {
@@ -18,6 +18,7 @@ import {
   ghostButtonClass,
 } from "@/components/ui.tsx";
 import SideBetForm from "./side-bet-form.tsx";
+import SuggestedLines from "@/components/suggested-lines.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -39,14 +40,14 @@ export default async function SideBetsPage({
   const season = ctx.season;
 
   const leagueId = process.env.SLEEPER_LEAGUE_ID;
-  const [bets, matchups] = await Promise.all([
+  const noLeague = {
+    ok: false as const,
+    error: "SLEEPER_LEAGUE_ID isn't set in the environment.",
+  };
+  const [bets, matchups, projections] = await Promise.all([
     listSideBets(season, week),
-    leagueId
-      ? getWeekMatchups(leagueId, week)
-      : Promise.resolve({
-          ok: false as const,
-          error: "SLEEPER_LEAGUE_ID isn't set in the environment.",
-        }),
+    leagueId ? getWeekMatchups(leagueId, week) : Promise.resolve(noLeague),
+    leagueId ? getWeekProjections(leagueId, season, week) : Promise.resolve(noLeague),
   ]);
 
   const open = bets.filter((b) => b.status === "open");
@@ -96,7 +97,33 @@ export default async function SideBetsPage({
           </Card>
         )}
 
-        <Card title="Post a bet" subtitle="Be specific. Vague bets start fights.">
+        {matchups.ok && projections.ok && (
+          <Card
+            title="The board"
+            subtitle="Lines built from Sleeper's weekly projections. Click a side to post it as a bet."
+          >
+            <SuggestedLines
+              season={season}
+              week={week}
+              matchups={matchups.data}
+              projections={projections.data}
+            />
+            <p className="mt-4 text-xs text-white/40">
+              Clicking a side puts a $5 bet on the board for someone else to
+              take. The price is recorded in the wording; side bets settle head
+              to head at the stake shown.
+            </p>
+          </Card>
+        )}
+
+        {matchups.ok && !projections.ok && (
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white/50">
+            <strong className="text-white/70">No generated lines this week.</strong>{" "}
+            {projections.error}
+          </div>
+        )}
+
+        <Card title="Post your own" subtitle="Be specific. Vague bets start fights.">
           <SideBetForm
             season={season}
             week={week}
