@@ -252,44 +252,57 @@ export async function getWeekMatchups(
  * Projections
  * ------------------------------------------------------------------------ */
 
-/** Which points column to read: PPR, half-PPR, or standard. */
+/** Which of Sleeper's own points columns matches this league's format. */
 export type ScoringFormat = "ppr" | "half_ppr" | "std";
 
+export type LeagueScoring = {
+  /** The league's own stat -> points multipliers, straight from Sleeper. */
+  settings: Record<string, number>;
+  /** Closest match among Sleeper's precomputed columns, used only as a fallback. */
+  format: ScoringFormat;
+};
+
 /**
- * Work out the league's scoring format from its settings.
- * `rec` is points per reception: 1 = PPR, 0.5 = half, 0 (or absent) = standard.
+ * The league's actual scoring settings.
+ *
+ * This matters more than it sounds. Sleeper publishes precomputed `pts_ppr`,
+ * `pts_half_ppr` and `pts_std` numbers, but those use *Sleeper's generic*
+ * scoring, not yours. Any customisation -- 6-point passing touchdowns, TE
+ * premium, yardage bonuses, a different penalty for interceptions -- makes
+ * those numbers wrong for your league. The raw settings let us score the
+ * projections ourselves.
  */
 export async function getLeagueScoring(
   leagueId: string,
-): Promise<SleeperResult<ScoringFormat>> {
+): Promise<SleeperResult<LeagueScoring>> {
   const res = await get<{ scoring_settings?: Record<string, number> | null }>(
     `/league/${leagueId}`,
   );
   if (!res.ok) return res;
-  const rec = res.data.scoring_settings?.rec ?? 0;
+
+  const settings = res.data.scoring_settings ?? {};
+  const rec = settings.rec ?? 0;
   const format: ScoringFormat = rec >= 1 ? "ppr" : rec >= 0.5 ? "half_ppr" : "std";
-  return { ok: true, data: format };
+  return { ok: true, data: { settings, format } };
 }
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
 /**
- * Projected points for every player in a given week, keyed by player id.
+ * Raw projected stats for every player in a week, keyed by player id.
  *
- * Sleeper's projections endpoint is not part of their documented v1 API and
- * has been known to change shape, so the parsing below accepts either an array
- * of rows or an object keyed by player id, and skips anything it can't read
- * rather than throwing.
+ * The values are Sleeper's stat projections -- `pass_yd`, `rec`, `rush_td` and
+ * so on -- plus their precomputed `pts_*` columns. Scoring them is a separate
+ * step so the league's own settings can be applied.
  */
 export async function getProjections(
   season: string | number,
   week: number,
-  format: ScoringFormat,
-): Promise<SleeperResult<Map<string, number>>> {
+): Promise<SleeperResult<Map<string, Record<string, number>>>> {
   const query = [
     "season_type=regular",
     ...POSITIONS.map((p) => `position[]=${p}`),
-    `order_by=${format}`,
+    "order_by=ppr",
   ].join("&");
 
   const res = await get<unknown>(
@@ -298,44 +311,40 @@ export async function getProjections(
   );
   if (!res.ok) return res;
 
-  const points = parseProjections(res.data, format);
-  if (points.size === 0) {
-    return {
-      ok: false,
-      error: "Sleeper returned no projections for this week.",
-    };
+  const rows = parseProjections(res.data);
+  if (rows.size === 0) {
+    return { ok: false, error: "Sleeper returned no projections for this week." };
   }
-  return { ok: true, data: points };
+  return { ok: true, data: rows };
 }
 
-/** Exported for testing: turn whatever Sleeper sent into player id -> points. */
+/**
+ * Turn whatever Sleeper sent into player id -> raw stat projections.
+ * Exported for testing. Accepts an array of rows or an object keyed by id,
+ * and skips anything it cannot read rather than throwing.
+ */
 export function parseProjections(
   payload: unknown,
-  format: ScoringFormat,
-): Map<string, number> {
-  const key = format === "ppr" ? "pts_ppr" : format === "half_ppr" ? "pts_half_ppr" : "pts_std";
-  const out = new Map<string, number>();
+): Map<string, Record<string, number>> {
+  const out = new Map<string, Record<string, number>>();
 
   const read = (playerId: unknown, row: unknown) => {
     if (typeof playerId !== "string" || !row || typeof row !== "object") return;
-    const stats = (row as { stats?: unknown }).stats;
-    const source = (stats && typeof stats === "object" ? stats : row) as Record<
+    const raw = (row as { stats?: unknown }).stats;
+    const source = (raw && typeof raw === "object" ? raw : row) as Record<
       string,
       unknown
     >;
-    // Fall back through the formats: a league on half-PPR still wants a number
-    // if only pts_ppr came back.
-    const value =
-      source[key] ?? source.pts_half_ppr ?? source.pts_ppr ?? source.pts_std;
-    if (typeof value === "number" && Number.isFinite(value)) {
-      out.set(playerId, value);
+
+    const stats: Record<string, number> = {};
+    for (const [key, value] of Object.entries(source)) {
+      if (typeof value === "number" && Number.isFinite(value)) stats[key] = value;
     }
+    if (Object.keys(stats).length > 0) out.set(playerId, stats);
   };
 
   if (Array.isArray(payload)) {
-    for (const row of payload) {
-      read((row as { player_id?: unknown })?.player_id, row);
-    }
+    for (const row of payload) read((row as { player_id?: unknown })?.player_id, row);
   } else if (payload && typeof payload === "object") {
     for (const [playerId, row] of Object.entries(payload)) read(playerId, row);
   }
@@ -343,31 +352,99 @@ export function parseProjections(
   return out;
 }
 
+/** How a player's points were arrived at, so the site can be honest about it. */
+export type ScoringMethod = "league" | "generic";
+
+export type PlayerPoints = { points: number; method: ScoringMethod };
+
+/**
+ * Score one player's projected stats.
+ *
+ * Preferred path: multiply each projected stat by this league's own multiplier
+ * for it and add them up. Sleeper's scoring settings and its stat projections
+ * use the same key names, so this is a straight dot product and it lands in
+ * the league's actual scoring.
+ *
+ * Fallback: Sleeper's precomputed column for the league's format. Note this
+ * never substitutes a *different* format -- a standard league falling back to
+ * `pts_ppr` would read high by roughly the number of receptions.
+ */
+export function scorePlayer(
+  stats: Record<string, number>,
+  scoring: LeagueScoring,
+): PlayerPoints | null {
+  let total = 0;
+  let matched = 0;
+
+  for (const [stat, value] of Object.entries(stats)) {
+    // The precomputed totals are not stats; adding them would double count.
+    if (stat.startsWith("pts_")) continue;
+    const multiplier = scoring.settings[stat];
+    if (typeof multiplier === "number") {
+      total += value * multiplier;
+      matched += 1;
+    }
+  }
+
+  // Deliberately unrounded: rounding each player before adding them up drifts
+  // the team total by a few hundredths. The total is rounded once, at the end.
+  if (matched > 0) return { points: total, method: "league" };
+
+  // No usable stat projections -- fall back to Sleeper's own column, but only
+  // the one that matches this league's format.
+  const column =
+    scoring.format === "ppr"
+      ? "pts_ppr"
+      : scoring.format === "half_ppr"
+        ? "pts_half_ppr"
+        : "pts_std";
+  const precomputed = stats[column];
+  if (typeof precomputed === "number") {
+    return { points: precomputed, method: "generic" };
+  }
+  return null;
+}
+
+export type TeamProjection = { points: number; method: ScoringMethod };
+
 /**
  * Add up each roster's projected score from its starting lineup.
- * Rosters whose starters are all missing from the projection set are left out
- * rather than reported as a projected zero.
+ *
+ * A lineup we can only price for a minority of its starters is left out
+ * entirely -- a partial sum would read as a suspiciously low real projection
+ * rather than as missing data.
  */
 export function projectTeamScores(
   matchups: SleeperMatchup[],
-  projections: Map<string, number>,
-): Map<number, number> {
-  const totals = new Map<number, number>();
+  rows: Map<string, Record<string, number>>,
+  scoring: LeagueScoring,
+): Map<number, TeamProjection> {
+  const totals = new Map<number, TeamProjection>();
+
   for (const m of matchups) {
     let total = 0;
     let found = 0;
+    let generic = 0;
+
     for (const playerId of m.starters) {
-      const points = projections.get(playerId);
-      if (typeof points === "number") {
-        total += points;
-        found += 1;
-      }
+      const stats = rows.get(playerId);
+      if (!stats) continue;
+      const scored = scorePlayer(stats, scoring);
+      if (!scored) continue;
+      total += scored.points;
+      found += 1;
+      if (scored.method === "generic") generic += 1;
     }
-    // Require at least half the lineup, otherwise the number is meaningless.
+
     if (found > 0 && found >= Math.ceil(m.starters.length / 2)) {
-      totals.set(m.rosterId, Math.round(total * 100) / 100);
+      totals.set(m.rosterId, {
+        points: Math.round(total * 100) / 100,
+        // If any starter fell back, the team total is only as good as that.
+        method: generic > 0 ? "generic" : "league",
+      });
     }
   }
+
   return totals;
 }
 
@@ -376,7 +453,7 @@ export async function getWeekProjections(
   leagueId: string,
   season: string | number,
   week: number,
-): Promise<SleeperResult<Map<number, number>>> {
+): Promise<SleeperResult<Map<number, TeamProjection>>> {
   const [matchups, scoring] = await Promise.all([
     getMatchups(leagueId, week),
     getLeagueScoring(leagueId),
@@ -384,10 +461,10 @@ export async function getWeekProjections(
   if (!matchups.ok) return matchups;
   if (!scoring.ok) return scoring;
 
-  const projections = await getProjections(season, week, scoring.data);
+  const projections = await getProjections(season, week);
   if (!projections.ok) return projections;
 
-  const totals = projectTeamScores(matchups.data, projections.data);
+  const totals = projectTeamScores(matchups.data, projections.data, scoring.data);
   if (totals.size === 0) {
     return {
       ok: false,

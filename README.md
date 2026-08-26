@@ -285,8 +285,17 @@ same instant both run `UPDATE ... WHERE status = 'open'`. Only one matches a
 row. The other changes nothing instead of overwriting the first.
 
 **The board is generated, not guessed.** Each team's projection is the sum of
-its starters' projected points from Sleeper, read in the league's own scoring
-format (PPR, half, or standard). Win probability comes from treating both
+its starters' projected points from Sleeper, scored with **your league's own
+scoring settings** rather than Sleeper's precomputed `pts_ppr` column. This
+matters: those precomputed numbers use Sleeper's generic scoring, so any
+customisation — 6-point passing touchdowns, TE premium, yardage bonuses, a
+different penalty for interceptions — makes them wrong for your league.
+Sleeper's scoring settings and its stat projections share key names
+(`pass_yd`, `rec`, `rush_td`…), so the projection is a straight dot product of
+the two. If a player has no stat projection, the site falls back to Sleeper's
+column *for your format only* — never a different one, since a standard league
+reading `pts_ppr` would run high by roughly one point per reception — and the
+board says when that happened. Win probability comes from treating both
 scores as normal with a ~25 point spread, which is roughly how much a fantasy
 score actually bounces around week to week; that probability becomes the
 moneyline, with a 4% vig split evenly across the two sides. Spreads and totals

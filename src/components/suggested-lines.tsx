@@ -27,12 +27,15 @@ export default function SuggestedLines({
   week,
   matchups,
   projections,
+  scoringMethod = "league",
   defaultStake = "5",
 }: {
   season: number;
   week: number;
   matchups: HeadToHead[];
   projections: Record<number, number>;
+  /** "generic" means at least one starter fell back to Sleeper's own scoring. */
+  scoringMethod?: "league" | "generic";
   defaultStake?: string;
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -123,6 +126,12 @@ export default function SuggestedLines({
           );
         })}
       </div>
+
+      <p className="mt-4 text-xs text-white/40">
+        {scoringMethod === "league"
+          ? "Projections are scored with your league's own scoring settings."
+          : "Some players had no stat projection, so Sleeper's generic scoring was used for them. Totals may not match your league's settings exactly."}
+      </p>
 
       {selection && (
         <ConfirmDialog

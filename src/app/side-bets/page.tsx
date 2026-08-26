@@ -106,7 +106,14 @@ export default async function SideBetsPage({
               season={season}
               week={week}
               matchups={matchups.data}
-              projections={Object.fromEntries(projections.data)}
+              projections={Object.fromEntries(
+                [...projections.data].map(([id, p]) => [id, p.points]),
+              )}
+              scoringMethod={
+                [...projections.data.values()].some((p) => p.method === "generic")
+                  ? "generic"
+                  : "league"
+              }
             />
             <p className="mt-4 text-xs text-white/40">
               Clicking a side puts a $5 bet on the board for someone else to

@@ -83,95 +83,225 @@ test("an empty week yields no games", () => {
 
 /* --- Projections ---------------------------------------------------------- */
 
-import { parseProjections, projectTeamScores } from "../src/lib/sleeper.ts";
+import {
+  parseProjections,
+  scorePlayer,
+  projectTeamScores,
+  type LeagueScoring,
+} from "../src/lib/sleeper.ts";
 
-test("parses the array shape Sleeper returns", () => {
-  const points = parseProjections(
-    [
-      { player_id: "4046", stats: { pts_ppr: 18.4, pts_half_ppr: 15.9, pts_std: 13.4 } },
-      { player_id: "6794", stats: { pts_ppr: 12.1, pts_half_ppr: 10.6, pts_std: 9.1 } },
-    ],
-    "ppr",
-  );
-  assert.equal(points.get("4046"), 18.4);
-  assert.equal(points.get("6794"), 12.1);
+/** A fairly ordinary PPR league. */
+const PPR: LeagueScoring = {
+  format: "ppr",
+  settings: {
+    pass_yd: 0.04, pass_td: 4, pass_int: -2,
+    rush_yd: 0.1, rush_td: 6,
+    rec: 1, rec_yd: 0.1, rec_td: 6,
+    fum_lost: -2,
+  },
+};
+
+/** Same league on standard scoring -- no points per reception. */
+const STD: LeagueScoring = {
+  format: "std",
+  settings: { ...PPR.settings, rec: 0 },
+};
+
+/** A customised league: 6-point passing TDs and TE premium. */
+const CUSTOM: LeagueScoring = {
+  format: "ppr",
+  settings: { ...PPR.settings, pass_td: 6, bonus_rec_te: 0.5 },
+};
+
+test("parseProjections keeps the raw stat lines", () => {
+  const rows = parseProjections([
+    { player_id: "4046", stats: { pass_yd: 275, pass_td: 2, pass_int: 0.6 } },
+  ]);
+  assert.deepEqual(rows.get("4046"), { pass_yd: 275, pass_td: 2, pass_int: 0.6 });
 });
 
-test("reads the right column for each scoring format", () => {
-  const row = [{ player_id: "1", stats: { pts_ppr: 20, pts_half_ppr: 17, pts_std: 14 } }];
-  assert.equal(parseProjections(row, "ppr").get("1"), 20);
-  assert.equal(parseProjections(row, "half_ppr").get("1"), 17);
-  assert.equal(parseProjections(row, "std").get("1"), 14);
+test("parseProjections reads an object keyed by player id", () => {
+  const rows = parseProjections({ "4046": { stats: { rec: 5, rec_yd: 60 } } });
+  assert.deepEqual(rows.get("4046"), { rec: 5, rec_yd: 60 });
 });
 
-test("parses an object keyed by player id too", () => {
-  const points = parseProjections({ "4046": { stats: { pts_ppr: 18.4 } } }, "ppr");
-  assert.equal(points.get("4046"), 18.4);
+test("parseProjections reads stats at the top level too", () => {
+  assert.deepEqual(parseProjections([{ player_id: "9", rec: 4 }]).get("9"), { rec: 4 });
 });
 
-test("handles stats living at the top level rather than under .stats", () => {
-  assert.equal(parseProjections([{ player_id: "9", pts_ppr: 11.5 }], "ppr").get("9"), 11.5);
+test("parseProjections drops non-numeric values and empty rows", () => {
+  const rows = parseProjections([
+    { player_id: "a", stats: { rec: 4, name: "Somebody", hurt: null } },
+    { player_id: "b", stats: { name: "All text" } },
+    { player_id: 5, stats: { rec: 4 } },
+    null,
+  ]);
+  assert.deepEqual(rows.get("a"), { rec: 4 });
+  assert.equal(rows.has("b"), false);
+  assert.equal(rows.size, 1);
 });
 
-test("falls back to another format when the requested one is absent", () => {
-  // A half-PPR league still wants a number if only pts_ppr came back.
-  assert.equal(parseProjections([{ player_id: "1", stats: { pts_ppr: 20 } }], "half_ppr").get("1"), 20);
-});
-
-test("skips malformed rows instead of throwing", () => {
-  const points = parseProjections(
-    [
-      null,
-      "nonsense",
-      { player_id: 123, stats: { pts_ppr: 5 } },      // id not a string
-      { stats: { pts_ppr: 5 } },                       // no id
-      { player_id: "ok", stats: { pts_ppr: "lots" } }, // not a number
-      { player_id: "good", stats: { pts_ppr: 9.5 } },
-    ],
-    "ppr",
-  );
-  assert.equal(points.size, 1);
-  assert.equal(points.get("good"), 9.5);
-});
-
-test("garbage payloads yield an empty map, not an exception", () => {
+test("parseProjections survives junk without throwing", () => {
   for (const junk of [null, undefined, 42, "text", [], {}]) {
-    assert.equal(parseProjections(junk, "ppr").size, 0);
+    assert.equal(parseProjections(junk).size, 0);
   }
 });
 
-const withStarters = (rosterId: number, starters: string[]): SleeperMatchup => ({
+test("a player is scored with the league's own settings", () => {
+  // 275 pass yd, 2 pass TD, 1 INT = 11 + 8 - 2 = 17
+  const scored = scorePlayer({ pass_yd: 275, pass_td: 2, pass_int: 1 }, PPR);
+  assert.equal(scored?.points, 17);
+  assert.equal(scored?.method, "league");
+});
+
+test("standard scoring does NOT quietly borrow PPR numbers", () => {
+  // This was the bug: a standard league falling back to pts_ppr read high by
+  // roughly one point per reception.
+  const stats = { rec: 8, rec_yd: 90, rec_td: 1, pts_ppr: 23, pts_half_ppr: 19 };
+  const ppr = scorePlayer(stats, PPR)!;
+  const std = scorePlayer(stats, STD)!;
+  assert.equal(ppr.points, 23); // 8 + 9 + 6
+  assert.equal(std.points, 15); // 0 + 9 + 6
+  assert.equal(ppr.points - std.points, 8, "the difference is exactly the receptions");
+});
+
+test("custom scoring is respected rather than assumed", () => {
+  const stats = { pass_yd: 300, pass_td: 3 };
+  // Generic league: 12 + 12 = 24. Custom 6-point passing TDs: 12 + 18 = 30.
+  assert.equal(scorePlayer(stats, PPR)?.points, 24);
+  assert.equal(scorePlayer(stats, CUSTOM)?.points, 30);
+});
+
+test("precomputed totals never get added on top of the stats", () => {
+  // pts_ppr sitting alongside the stats must not double count.
+  const withTotals = scorePlayer({ rec: 5, rec_yd: 50, pts_ppr: 10 }, PPR)!;
+  const without = scorePlayer({ rec: 5, rec_yd: 50 }, PPR)!;
+  assert.equal(withTotals.points, without.points);
+  assert.equal(withTotals.points, 10);
+});
+
+test("stats the league does not score are ignored", () => {
+  // Sleeper sends plenty of stats a league assigns no value to.
+  const scored = scorePlayer({ rec: 5, rec_yd: 50, snaps: 62, targets: 9 }, PPR)!;
+  assert.equal(scored.points, 10);
+});
+
+test("falls back to Sleeper's own column only when there are no usable stats", () => {
+  const scored = scorePlayer({ pts_ppr: 14.2, pts_half_ppr: 11.7, pts_std: 9.2 }, PPR)!;
+  assert.equal(scored.points, 14.2);
+  assert.equal(scored.method, "generic");
+});
+
+test("the fallback picks the column matching the league's format", () => {
+  const stats = { pts_ppr: 14.2, pts_half_ppr: 11.7, pts_std: 9.2 };
+  assert.equal(scorePlayer(stats, STD)?.points, 9.2);
+  assert.equal(scorePlayer(stats, { ...PPR, format: "half_ppr" })?.points, 11.7);
+});
+
+test("the fallback does not substitute a different format", () => {
+  // A standard league with only pts_ppr available gets nothing, rather than an
+  // inflated number quietly presented as its own.
+  assert.equal(scorePlayer({ pts_ppr: 20 }, STD), null);
+});
+
+test("a player with nothing usable scores null", () => {
+  assert.equal(scorePlayer({}, PPR), null);
+  assert.equal(scorePlayer({ snaps: 60 }, PPR), null);
+});
+
+test("negative scoring works (turnovers cost points)", () => {
+  const scored = scorePlayer({ pass_yd: 250, pass_int: 3, fum_lost: 1 }, PPR)!;
+  assert.equal(scored.points, 10 - 6 - 2);
+});
+
+const lineup = (rosterId: number, starters: string[]): SleeperMatchup => ({
   matchupId: 1,
   rosterId,
   points: 0,
   starters,
 });
 
-test("a team's projection is the sum of its starters", () => {
-  const projections = new Map([["a", 20], ["b", 15], ["c", 10.5]]);
-  const totals = projectTeamScores([withStarters(1, ["a", "b", "c"])], projections);
-  assert.equal(totals.get(1), 45.5);
+test("a team total is its starters scored in league settings", () => {
+  const rows = new Map<string, Record<string, number>>([
+    ["a", { rec: 6, rec_yd: 80 }],   // 14
+    ["b", { rush_yd: 90, rush_td: 1 }], // 15
+    ["c", { pass_yd: 300, pass_td: 2 }], // 20
+  ]);
+  const totals = projectTeamScores([lineup(1, ["a", "b", "c"])], rows, PPR);
+  assert.equal(totals.get(1)?.points, 49);
+  assert.equal(totals.get(1)?.method, "league");
 });
 
-test("a mostly-known lineup still projects", () => {
-  const projections = new Map([["a", 20], ["b", 15], ["c", 10]]);
-  // 3 of 4 starters known -- good enough.
-  const totals = projectTeamScores([withStarters(1, ["a", "b", "c", "unknown"])], projections);
-  assert.equal(totals.get(1), 45);
+test("the same lineup scores lower in a standard league", () => {
+  const rows = new Map([
+    ["a", { rec: 6, rec_yd: 80 }],
+    ["b", { rec: 4, rec_yd: 50 }],
+  ]);
+  const ppr = projectTeamScores([lineup(1, ["a", "b"])], rows, PPR).get(1)!;
+  const std = projectTeamScores([lineup(1, ["a", "b"])], rows, STD).get(1)!;
+  assert.equal(ppr.points - std.points, 10, "ten receptions, ten points");
 });
 
-test("a lineup we mostly cannot price is left out entirely", () => {
-  const projections = new Map([["a", 20]]);
-  // Only 1 of 5 known -- reporting 20 would be actively misleading.
-  const totals = projectTeamScores([withStarters(1, ["a", "v", "w", "x", "y"])], projections);
+test("a team flagged generic when any starter fell back", () => {
+  const rows = new Map<string, Record<string, number>>([
+    ["a", { rec: 6, rec_yd: 80 }],
+    ["b", { pts_ppr: 12 }],
+  ]);
+  assert.equal(projectTeamScores([lineup(1, ["a", "b"])], rows, PPR).get(1)?.method, "generic");
+});
+
+test("a mostly-unknown lineup is left off entirely", () => {
+  const rows = new Map([["a", { rec: 6 }]]);
+  const totals = projectTeamScores([lineup(1, ["a", "v", "w", "x", "y"])], rows, PPR);
   assert.equal(totals.has(1), false);
 });
 
 test("an empty lineup produces no projection rather than zero", () => {
-  assert.equal(projectTeamScores([withStarters(1, [])], new Map([["a", 20]])).has(1), false);
+  assert.equal(projectTeamScores([lineup(1, [])], new Map(), PPR).has(1), false);
 });
 
-test("rounds to cents so totals don't show floating point noise", () => {
-  const projections = new Map([["a", 10.1], ["b", 10.2]]);
-  assert.equal(projectTeamScores([withStarters(1, ["a", "b"])], projections).get(1), 20.3);
+test("team totals are rounded to cents, not left as float noise", () => {
+  const rows = new Map([
+    ["a", { rec_yd: 83 }],
+    ["b", { rec_yd: 47 }],
+  ]);
+  const total = projectTeamScores([lineup(1, ["a", "b"])], rows, PPR).get(1)!.points;
+  assert.equal(total, 13);
+  assert.ok(Number.isInteger(total * 100));
+});
+
+test("a realistic PPR lineup lands in a believable range", () => {
+  // Nine starters with ordinary stat lines should total roughly 100-140,
+  // not 200. If this ever fails, the scoring is double counting something.
+  const starter = { rec: 4, rec_yd: 55, rush_yd: 20, rec_td: 0.4 };
+  const rows = new Map(
+    Array.from({ length: 9 }, (_, i) => [`p${i}`, starter] as const),
+  );
+  const total = projectTeamScores(
+    [lineup(1, Array.from({ length: 9 }, (_, i) => `p${i}`))],
+    rows,
+    PPR,
+  ).get(1)!.points;
+  assert.ok(total > 90 && total < 150, `${total} is not a believable team total`);
+});
+
+test("rounding happens once, at the team total, not per player", () => {
+  // Nine identical players each worth 12.344 points. Rounding each to cents
+  // first would drift the total; rounding once keeps it exact.
+  const stats = { rec_yd: 123.44 }; // 12.344 points at 0.1/yd
+  const rows = new Map(
+    Array.from({ length: 9 }, (_, i) => [`p${i}`, stats] as const),
+  );
+  const total = projectTeamScores(
+    [lineup(1, Array.from({ length: 9 }, (_, i) => `p${i}`))],
+    rows,
+    PPR,
+  ).get(1)!.points;
+  // 9 x 12.344 = 111.096 -> 111.1
+  assert.equal(total, 111.1);
+});
+
+test("a single player's points are not pre-rounded away", () => {
+  const scored = scorePlayer({ rec_yd: 123.44 }, PPR)!;
+  assert.ok(Math.abs(scored.points - 12.344) < 1e-9, `${scored.points}`);
 });
