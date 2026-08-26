@@ -14,12 +14,31 @@
  * in November instead of drifting to 2am.
  */
 
-export const SEASON = 2026;
+/**
+ * Next season, change these two rather than editing the code:
+ *
+ *   LEAGUE_SEASON=2027
+ *   LEAGUE_WEEK2_DATE=2027-09-14      (the Tuesday week 2 starts)
+ */
+export const SEASON = Number(process.env.LEAGUE_SEASON) || 2026;
 export const TIMEZONE = "America/New_York";
 export const LAST_WEEK = 18;
 
 /** The Tuesday on which week 2 begins, as a plain Eastern calendar date. */
-const WEEK_2_DATE = { year: 2026, month: 9, day: 15 } as const;
+const WEEK_2_DATE = parseAnchor(process.env.LEAGUE_WEEK2_DATE) ?? {
+  year: 2026,
+  month: 9,
+  day: 15,
+};
+
+function parseAnchor(
+  value: string | undefined,
+): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value?.trim() ?? "");
+  if (!match) return null;
+  const [, year, month, day] = match;
+  return { year: Number(year), month: Number(month), day: Number(day) };
+}
 
 /** The hour (Eastern) at which the week ticks over. */
 const ROLLOVER_HOUR = 3;

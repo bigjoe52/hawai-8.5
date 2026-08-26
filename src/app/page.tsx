@@ -7,7 +7,7 @@ import {
   getOrCreateParlay,
   listMembers,
   listSideBets,
-  listSettledBets,
+  listUnpaidBets,
 } from "@/lib/queries.ts";
 import { currentWeek } from "@/lib/week.ts";
 import { resolveParlay, formatCents, formatAmerican } from "@/lib/odds.ts";
@@ -25,11 +25,11 @@ export default async function Dashboard() {
   if (!user) redirect("/login");
 
   const ctx = await currentWeek();
-  const [parlay, members, bets, settled] = await Promise.all([
+  const [parlay, members, bets, unpaid] = await Promise.all([
     getOrCreateParlay(ctx.season, ctx.week),
     listMembers(),
     listSideBets(ctx.season, ctx.week),
-    listSettledBets(),
+    listUnpaidBets(),
   ]);
 
   const myLeg = parlay.legs.find((l) => l.userId === user.id);
@@ -37,7 +37,7 @@ export default async function Dashboard() {
   const openBets = bets.filter(
     (b) => b.status === "open" && b.proposerId !== user.id,
   );
-  const myTab = pairwiseDebts(settled).filter(
+  const myTab = pairwiseDebts(unpaid).filter(
     (d) => d.fromUserId === user.id || d.toUserId === user.id,
   );
   const owed = myTab.reduce(

@@ -11,6 +11,7 @@ import {
 } from "./auth.ts";
 import { parseStakeToCents } from "./odds.ts";
 import { winningsFor } from "./lines.ts";
+import { autoSettleFinishedWeeks } from "./settle.ts";
 
 /**
  * Every write to the database goes through this file.
@@ -293,8 +294,9 @@ export async function settleSideBetAction(formData: FormData): Promise<void> {
     throw new Error("Pick a winner.");
   }
 
-  // A push moves no money, so it is recorded as void rather than settled.
-  const status = winner === "push" ? "void" : "settled";
+  // A push moves no money, so it is recorded as void. Everything else lands in
+  // 'unpaid': the result is known, but nobody has handed over any money yet.
+  const status = winner === "push" ? "void" : "unpaid";
 
   await sql`
     UPDATE side_bets
@@ -328,6 +330,21 @@ export async function postLineBetAction(formData: FormData): Promise<void> {
   const rawStake = String(formData.get("stake") ?? "");
   const rawOdds = String(formData.get("odds") ?? "").trim();
 
+  // Market details, so this bet can grade itself once the games are done.
+  const marketKind = String(formData.get("marketKind") ?? "").trim();
+  const proposerPick = String(formData.get("proposerPick") ?? "").trim();
+  const lineValue = Number(formData.get("lineValue"));
+  const homeRosterId = Number(formData.get("homeRosterId"));
+  const awayRosterId = Number(formData.get("awayRosterId"));
+  const subjectRosterId = Number(formData.get("subjectRosterId"));
+
+  const gradeable =
+    ["moneyline", "spread", "total", "team_total"].includes(marketKind) &&
+    ["home", "away", "over", "under"].includes(proposerPick) &&
+    Number.isFinite(lineValue) &&
+    Number.isInteger(homeRosterId) &&
+    Number.isInteger(awayRosterId);
+
   if (!title || !proposerSide || !takerSide) return;
   if (!Number.isInteger(season) || !Number.isInteger(week)) return;
 
@@ -351,14 +368,89 @@ export async function postLineBetAction(formData: FormData): Promise<void> {
   await sql`
     INSERT INTO side_bets
       (season, week, proposer_id, title, details, proposer_side, taker_side,
-       stake_cents, taker_stake_cents, sleeper_matchup_id)
+       stake_cents, taker_stake_cents, sleeper_matchup_id,
+       market_kind, line_value, proposer_pick,
+       home_roster_id, away_roster_id, subject_roster_id)
     VALUES
       (${season}, ${week}, ${user.id}, ${title},
        ${"Line generated from Sleeper projections."},
        ${proposerSide}, ${takerSide}, ${stakeCents}, ${takerStakeCents},
-       ${matchupId || null})
+       ${matchupId || null},
+       ${gradeable ? marketKind : null},
+       ${gradeable ? lineValue : null},
+       ${gradeable ? proposerPick : null},
+       ${gradeable ? homeRosterId : null},
+       ${gradeable ? awayRosterId : null},
+       ${gradeable && Number.isInteger(subjectRosterId) ? subjectRosterId : null})
   `;
 
   revalidatePath("/side-bets");
   revalidatePath("/");
+}
+
+/* -------------------------------------------------------------------------
+ * Payment
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Mark a bet paid.
+ *
+ * Only the person who is owed the money can confirm it arrived -- the loser
+ * saying "I paid you" is not the same thing. The commissioner can also mark
+ * it, for when somebody settles up in person and forgets.
+ *
+ * The `status = 'unpaid'` condition makes this idempotent: a second click
+ * changes nothing.
+ */
+export async function markPaidAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const betId = Number(formData.get("betId"));
+  if (!Number.isInteger(betId)) return;
+
+  await sql`
+    UPDATE side_bets
+    SET status = 'paid', paid_at = NOW(), paid_by = ${user.id}
+    WHERE id = ${betId}
+      AND status = 'unpaid'
+      AND (
+        ${user.isAdmin}
+        OR (winner = 'proposer' AND proposer_id = ${user.id})
+        OR (winner = 'taker'    AND taker_id    = ${user.id})
+      )
+  `;
+
+  revalidatePath("/side-bets");
+  revalidatePath("/ledger");
+  revalidatePath("/");
+}
+
+/** Undo a payment mark, for when somebody clicks it by mistake. */
+export async function markUnpaidAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const betId = Number(formData.get("betId"));
+  if (!Number.isInteger(betId)) return;
+
+  await sql`
+    UPDATE side_bets
+    SET status = 'unpaid', paid_at = NULL, paid_by = NULL
+    WHERE id = ${betId}
+      AND status = 'paid'
+      AND (
+        ${user.isAdmin}
+        OR (winner = 'proposer' AND proposer_id = ${user.id})
+        OR (winner = 'taker'    AND taker_id    = ${user.id})
+      )
+  `;
+
+  revalidatePath("/side-bets");
+  revalidatePath("/ledger");
+}
+
+/** Commissioner: grade everything that can be graded, on demand. */
+export async function autoSettleAction(): Promise<void> {
+  await requireAdmin();
+  await autoSettleFinishedWeeks(18);
+  revalidatePath("/side-bets");
+  revalidatePath("/ledger");
+  revalidatePath("/admin");
 }

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth.ts";
 import { configProblems } from "@/lib/config.ts";
 import SetupNeeded from "@/components/setup-needed.tsx";
-import { listSettledBets, listMembers } from "@/lib/queries.ts";
+import { listGradedBets, listUnpaidBets, listMembers } from "@/lib/queries.ts";
 import { standings, pairwiseDebts, netByUser, assertBalanced } from "@/lib/ledger.ts";
 import { formatCents } from "@/lib/odds.ts";
 import { Nav, Page, Card, Empty } from "@/components/ui.tsx";
@@ -17,16 +17,22 @@ export default async function LedgerPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [bets, members] = await Promise.all([listSettledBets(), listMembers()]);
+  // Standings run on everything graded -- a win is a win once the games end.
+  // "Who owes who" runs only on what is still unpaid.
+  const [graded, unpaid, members] = await Promise.all([
+    listGradedBets(),
+    listUnpaidBets(),
+    listMembers(),
+  ]);
   const nameById = new Map(members.map((m) => [m.id, m.displayName]));
   const name = (id: number) => nameById.get(id) ?? `Player ${id}`;
 
-  const rows = standings(bets);
-  const debts = pairwiseDebts(bets);
+  const rows = standings(graded);
+  const debts = pairwiseDebts(unpaid);
 
   // If this ever throws, the ledger is wrong and nobody should trust it.
   // Better a loud error than quietly telling someone they owe the wrong amount.
-  assertBalanced(netByUser(bets));
+  assertBalanced(netByUser(graded));
 
   const mine = debts.filter(
     (d) => d.fromUserId === user.id || d.toUserId === user.id,
@@ -39,8 +45,8 @@ export default async function LedgerPage() {
         <div>
           <h1 className="text-2xl font-bold">The Ledger</h1>
           <p className="mt-1 text-sm text-white/50">
-            Side bet results only. Settle up however you normally do — the site
-            just keeps the number honest.
+            Outstanding tabs only — once a winner marks a bet paid it drops off
+            here but stays in the standings. Settle up however you normally do.
           </p>
         </div>
 
@@ -93,7 +99,7 @@ export default async function LedgerPage() {
 
         <Card
           title="Standings"
-          subtitle="Net across every settled side bet."
+          subtitle="Net across every graded side bet, paid or not."
         >
           {rows.length === 0 ? (
             <Empty>Nothing settled yet.</Empty>

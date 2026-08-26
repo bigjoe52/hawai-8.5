@@ -192,9 +192,30 @@ your league is live.
 
 **The commissioner:**
 1. Before kickoff: **Commissioner → Mark locked**. Legs freeze.
-2. After the games: grade each leg win/loss/push, and settle the matched
-   side bets.
+2. After the games: grade each parlay leg win/loss/push. Side bets placed from
+   the board settle themselves; only hand-written ones need you.
 3. The ledger updates itself.
+
+### Bets settle themselves
+A bet placed from the board carries its market, its number, and which side was
+taken, so once the week rolls over it grades from the final fantasy scores with
+nobody pressing anything. It happens on page load, and the bet is marked
+*settled automatically*.
+
+A bet somebody typed out in their own words cannot be graded in code, so those
+stay with the commissioner.
+
+### Unpaid, then paid
+A graded bet lands in **Unpaid** — the result is known, the money isn't moved.
+Only the **winner** can mark it paid (or the commissioner, for when somebody
+settles up in person). The loser saying "I paid you" is not the same thing.
+
+Paid bets drop off the ledger's who-owes-who but stay in the standings: a win
+is a win whether or not anybody has settled up.
+
+### Tabs
+Side bets are split into **Bets I can take** (open, posted by other people),
+**My posted bets**, **Matched**, and **Finished**.
 
 ### The week
 The site keeps its own schedule rather than asking Sleeper, so everyone always
@@ -260,6 +281,8 @@ src/
     queries.ts         database reads
     actions.ts         database writes (all of them)
     week.ts            the league's week schedule           <- unit tested
+    grading.ts         decides who won, from final scores    <- unit tested
+    settle.ts          grades finished weeks automatically
 db/schema.sql          the tables
 scripts/               setup and seeding
 tests/                 unit tests

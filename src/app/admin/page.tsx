@@ -14,6 +14,7 @@ import {
   setParlayStatusAction,
   setStakeAction,
   settleSideBetAction,
+  autoSettleAction,
 } from "@/lib/actions.ts";
 import {
   Nav,
@@ -154,8 +155,14 @@ export default async function AdminPage({
 
         <Card
           title="Settle side bets"
-          subtitle="Matched bets waiting on a result, across all weeks."
+          subtitle="Matched bets waiting on a result, across all weeks. Bets placed from the board settle themselves once the week ends — these are the hand-written ones."
         >
+          <form action={autoSettleAction} className="mb-4">
+            <button type="submit" className={ghostButtonClass}>
+              Run auto-settle now
+            </button>
+          </form>
+
           {unsettled.length === 0 ? (
             <Empty>Nothing waiting to be settled.</Empty>
           ) : (

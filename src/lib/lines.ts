@@ -36,6 +36,10 @@ export type Market = {
    * straight up: the loser pays the winner the stake.
    */
   odds: [number, number] | null;
+  /** The number the bet is struck at, so it can be graded later. */
+  line: number;
+  /** Whose total this is, for a team total. Null for every other market. */
+  subjectRosterId: number | null;
 };
 
 /** Round to the nearest half point, the way real lines are quoted. */
@@ -166,6 +170,8 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
     title: "Moneyline",
     sides: [home.name, away.name],
     odds: priceTwoWay(pHome),
+    line: 0,
+    subjectRosterId: null,
   });
 
   // --- Spread: margin of victory ---
@@ -181,6 +187,8 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
       `${away.name} ${formatSpread(line)}`,
     ],
     odds: null,
+    line,
+    subjectRosterId: null,
   });
 
   // --- Game total ---
@@ -190,6 +198,8 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
     title: "Game total",
     sides: [`Over ${total}`, `Under ${total}`],
     odds: null,
+    line: total,
+    subjectRosterId: null,
   });
 
   // --- Each team's own total ---
@@ -200,6 +210,8 @@ export function buildMarkets(home: TeamLine, away: TeamLine): Market[] {
       title: `${team.name} total`,
       sides: [`Over ${teamTotal}`, `Under ${teamTotal}`],
       odds: null,
+      line: teamTotal,
+      subjectRosterId: team.rosterId,
     });
   }
 

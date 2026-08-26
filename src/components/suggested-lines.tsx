@@ -10,6 +10,7 @@ import {
 import { formatAmerican, formatCents, parseStakeToCents } from "@/lib/odds.ts";
 import { postLineBetAction } from "@/lib/actions.ts";
 import type { HeadToHead } from "@/lib/sleeper.ts";
+import { describePick, type Pick } from "@/lib/grading.ts";
 
 type Selection = {
   matchupId: number;
@@ -18,6 +19,13 @@ type Selection = {
   theirSide: string;
   myOdds: number | null;
   matchup: string;
+  /** Everything needed to grade this bet automatically once the week ends. */
+  marketKind: Market["kind"];
+  proposerPick: Pick;
+  lineValue: number;
+  homeRosterId: number;
+  awayRosterId: number;
+  subjectRosterId: number | null;
 };
 
 /** "$5.00" from a typed amount, or null while it is still nonsense. */
@@ -121,6 +129,13 @@ export default function SuggestedLines({
                               theirSide: label(market.sides[other], theirOdds),
                               myOdds,
                               matchup: matchupLabel,
+                              marketKind: market.kind,
+                              proposerPick:
+                                describePick(market.kind, sideIndex as 0 | 1) ?? "home",
+                              lineValue: market.line,
+                              homeRosterId: home.rosterId,
+                              awayRosterId: away.rosterId,
+                              subjectRosterId: market.subjectRosterId,
                             })
                           }
                           className="flex w-full items-center justify-between gap-2 rounded border border-white/10 px-3 py-1.5 text-left text-sm text-white/80 transition hover:border-surf-500 hover:bg-surf-500/10 hover:text-white"
@@ -224,6 +239,18 @@ function ConfirmDialog({
           <input type="hidden" name="title" value={selection.title} />
           <input type="hidden" name="proposerSide" value={selection.mySide} />
           <input type="hidden" name="takerSide" value={selection.theirSide} />
+          <input type="hidden" name="marketKind" value={selection.marketKind} />
+          <input type="hidden" name="proposerPick" value={selection.proposerPick} />
+          <input type="hidden" name="lineValue" value={String(selection.lineValue)} />
+          <input type="hidden" name="homeRosterId" value={String(selection.homeRosterId)} />
+          <input type="hidden" name="awayRosterId" value={String(selection.awayRosterId)} />
+          {selection.subjectRosterId !== null && (
+            <input
+              type="hidden"
+              name="subjectRosterId"
+              value={String(selection.subjectRosterId)}
+            />
+          )}
           <input
             type="hidden"
             name="odds"

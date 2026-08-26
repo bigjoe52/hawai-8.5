@@ -105,6 +105,8 @@ const BADGE_STYLES: Record<string, string> = {
   locked: "bg-white/10 text-white/70 border-white/20",
   matched: "bg-surf-500/15 text-surf-300 border-surf-500/30",
   settled: "bg-white/10 text-white/60 border-white/20",
+  unpaid: "bg-sunset-500/20 text-sunset-300 border-sunset-500/40",
+  paid: "bg-surf-500/15 text-surf-300 border-surf-500/30",
 };
 
 export function Badge({ status }: { status: string }) {
