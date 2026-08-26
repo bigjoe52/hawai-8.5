@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth.ts";
+import { configProblems } from "@/lib/config.ts";
+import SetupNeeded from "@/components/setup-needed.tsx";
 import {
   getOrCreateParlay,
   listUnsettledBets,
@@ -31,6 +33,10 @@ export default async function AdminPage({
 }: {
   searchParams: Promise<{ week?: string }>;
 }) {
+  // Show what needs configuring rather than a bare 500 page.
+  const problems = configProblems();
+  if (problems.length > 0) return <SetupNeeded problems={problems} />;
+
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   // Belt and braces: the nav link is hidden for non-admins, but the page

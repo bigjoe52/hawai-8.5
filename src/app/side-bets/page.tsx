@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth.ts";
+import { configProblems } from "@/lib/config.ts";
+import SetupNeeded from "@/components/setup-needed.tsx";
 import { listSideBets } from "@/lib/queries.ts";
 import { currentWeek } from "@/lib/week.ts";
 import { getWeekMatchups } from "@/lib/sleeper.ts";
@@ -24,6 +26,10 @@ export default async function SideBetsPage({
 }: {
   searchParams: Promise<{ week?: string }>;
 }) {
+  // Show what needs configuring rather than a bare 500 page.
+  const problems = configProblems();
+  if (problems.length > 0) return <SetupNeeded problems={problems} />;
+
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 

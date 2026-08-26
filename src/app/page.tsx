@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth.ts";
+import { configProblems } from "@/lib/config.ts";
+import SetupNeeded from "@/components/setup-needed.tsx";
 import {
   getOrCreateParlay,
   listMembers,
@@ -15,6 +17,10 @@ import { Nav, Page, Card, Badge, Empty, buttonClass } from "@/components/ui.tsx"
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
+  // Show what needs configuring rather than a bare 500 page.
+  const problems = configProblems();
+  if (problems.length > 0) return <SetupNeeded problems={problems} />;
+
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 

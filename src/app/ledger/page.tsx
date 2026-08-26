@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth.ts";
+import { configProblems } from "@/lib/config.ts";
+import SetupNeeded from "@/components/setup-needed.tsx";
 import { listSettledBets, listMembers } from "@/lib/queries.ts";
 import { standings, pairwiseDebts, netByUser, assertBalanced } from "@/lib/ledger.ts";
 import { formatCents } from "@/lib/odds.ts";
@@ -8,6 +10,10 @@ import { Nav, Page, Card, Empty } from "@/components/ui.tsx";
 export const dynamic = "force-dynamic";
 
 export default async function LedgerPage() {
+  // Show what needs configuring rather than a bare 500 page.
+  const problems = configProblems();
+  if (problems.length > 0) return <SetupNeeded problems={problems} />;
+
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 

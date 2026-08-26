@@ -1,8 +1,19 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth.ts";
+import { configProblems } from "@/lib/config.ts";
+import SetupNeeded from "@/components/setup-needed.tsx";
+
+// Never prerender this at build time. It reads configuration and cookies,
+// both of which only exist per-request -- prerendering would freeze whatever
+// the build environment happened to look like into a cached page.
+export const dynamic = "force-dynamic";
 import LoginForm from "./login-form.tsx";
 
 export default async function LoginPage() {
+  // Show what needs configuring rather than a bare 500 page.
+  const problems = configProblems();
+  if (problems.length > 0) return <SetupNeeded problems={problems} />;
+
   // Already signed in? Straight to the dashboard.
   if (await getCurrentUser()) redirect("/");
 
