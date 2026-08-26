@@ -69,14 +69,31 @@ if (resetIndex !== -1) {
 }
 
 const created = [];
-const skipped = [];
+const updated = [];
+const unchanged = [];
 
 for (const member of LEAGUE) {
   const existing = await sql`
-    SELECT id FROM users WHERE lower(username) = lower(${member.username})
+    SELECT id, display_name, is_admin
+    FROM users WHERE lower(username) = lower(${member.username})
   `;
+
   if (existing.length > 0) {
-    skipped.push(member.username);
+    // Already here. Bring the display name and commissioner flag in line with
+    // the list -- editing LEAGUE after seeding should actually take effect.
+    // The password is deliberately left alone; use --reset to change one.
+    const row = existing[0];
+    const wantsAdmin = member.admin === true;
+    if (row.display_name !== member.displayName || row.is_admin !== wantsAdmin) {
+      await sql`
+        UPDATE users
+        SET display_name = ${member.displayName}, is_admin = ${wantsAdmin}
+        WHERE id = ${row.id}
+      `;
+      updated.push(member.username);
+    } else {
+      unchanged.push(member.username);
+    }
     continue;
   }
 
@@ -90,13 +107,60 @@ for (const member of LEAGUE) {
   created.push({ ...member, password });
 }
 
-if (skipped.length > 0) {
-  console.log(`\nAlready existed, left alone: ${skipped.join(", ")}`);
+/* --- Accounts in the database that are no longer in LEAGUE ---------------- */
+
+const usernames = LEAGUE.map((m) => m.username.toLowerCase());
+const strays = await sql`
+  SELECT u.id, u.username,
+         (SELECT count(*) FROM parlay_legs l WHERE l.user_id = u.id)::int AS legs,
+         (SELECT count(*) FROM side_bets b
+           WHERE b.proposer_id = u.id OR b.taker_id = u.id)::int AS bets
+  FROM users u
+  WHERE lower(u.username) <> ALL(${usernames})
+  ORDER BY u.username
+`;
+
+if (strays.length > 0) {
+  const prune = process.argv.includes("--prune");
+  const withData = strays.filter((s) => s.legs > 0 || s.bets > 0);
+
+  if (!prune) {
+    console.log(
+      `\nIn the database but not in LEAGUE: ${strays.map((s) => s.username).join(", ")}`,
+    );
+    console.log("They can still log in. To delete them:  npm run db:seed -- --prune");
+  } else if (withData.length > 0) {
+    // Deleting a user cascades to their legs and bets. Never do that silently.
+    console.error("\nRefusing to delete accounts that already have bets:");
+    for (const s of withData) {
+      console.error(`  ${s.username} -- ${s.legs} parlay leg(s), ${s.bets} side bet(s)`);
+    }
+    console.error(
+      "\nDeleting them would delete that history too. Remove their bets first,\n" +
+        "or leave the accounts in place.\n",
+    );
+    await client.end();
+    process.exit(1);
+  } else {
+    for (const s of strays) {
+      await sql`DELETE FROM users WHERE id = ${s.id}`;
+    }
+    console.log(`\nDeleted (no bets): ${strays.map((s) => s.username).join(", ")}`);
+  }
+}
+
+/* --- Report ---------------------------------------------------------------- */
+
+if (updated.length > 0) {
+  console.log(`\nRenamed to match LEAGUE: ${updated.join(", ")}`);
+}
+if (unchanged.length > 0) {
+  console.log(`Already correct: ${unchanged.join(", ")}`);
 }
 
 if (created.length === 0) {
-  await client.end();
   console.log("\nNo new accounts to create.\n");
+  await client.end();
   process.exit(0);
 }
 

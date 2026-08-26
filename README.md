@@ -152,9 +152,27 @@ they are only valid for a few minutes. Press `Ctrl+C` in the terminal, run
 `db:seed` prints ten usernames and passwords **once**. Copy them somewhere
 before you close the terminal, then hand them out.
 
-**Before you run it**, open `scripts/seed-users.mjs` and edit the `LEAGUE` list
-to your actual guys. Set `admin: true` on yourself — the commissioner is the
-one who can lock weeks, grade legs, and settle side bets.
+**Ideally before you run it**, open `scripts/seed-users.mjs` and edit the
+`LEAGUE` list to your actual guys. Set `admin: true` on yourself — the
+commissioner is the one who can lock weeks, grade legs, and settle side bets.
+
+**You can also edit it afterwards.** Re-running `npm run db:seed` is safe and
+does the sensible thing:
+
+| You changed | What happens on re-run |
+| --- | --- |
+| A display name, or who is `admin` | Updated in place. Passwords untouched. |
+| Added someone new | Account created, password printed. |
+| Changed a username | Treated as a new person; the old account stays. |
+| Removed someone | Reported, but kept. Add `--prune` to delete them. |
+
+```bash
+npm run db:seed -- --prune   # also delete accounts no longer in LEAGUE
+```
+
+`--prune` refuses to delete anyone who already has parlay legs or side bets,
+since removing them would take that history with them. It tells you who and
+why instead.
 
 ### 6. Redeploy
 
@@ -187,7 +205,8 @@ npm test           # unit tests for the betting and ledger math
 npm run db:check   # is the database reachable, and set up?
 npm run db:setup   # create tables (safe to re-run)
 npm run db:seed    # add any new members from the LEAGUE list
-node scripts/seed-users.mjs --reset joe   # reset one person's password
+node scripts/seed-users.mjs --reset joe    # reset one person's password
+npm run db:seed -- --prune                # drop accounts no longer in LEAGUE
 ```
 
 ### Adding an 11th member later
