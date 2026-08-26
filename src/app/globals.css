@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* Sunset-over-the-Pacific palette. It's a fantasy league site -- it should
+   look like somewhere you'd rather be than at work. */
+@theme {
+  --color-surf-50:  #eefcfb;
+  --color-surf-100: #d3f6f4;
+  --color-surf-300: #6fe0da;
+  --color-surf-500: #14b8a6;
+  --color-surf-700: #0f766e;
+  --color-surf-900: #134e4a;
+
+  --color-sunset-300: #fdba74;
+  --color-sunset-500: #f97316;
+  --color-sunset-600: #ea580c;
+
+  --color-deep-800: #0c1f2c;
+  --color-deep-900: #071620;
+  --color-deep-950: #040e15;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1100px 500px at 80% -10%, rgba(249, 115, 22, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 10% 0%, rgba(20, 184, 166, 0.16), transparent 55%),
+    var(--color-deep-950);
+  color: #e6f1f5;
+  min-height: 100vh;
+}
+
+/* Native form controls default to a light theme; make them match. */
+select, input, textarea {
+  color-scheme: dark;
+}
