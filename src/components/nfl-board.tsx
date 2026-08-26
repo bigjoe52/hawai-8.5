@@ -15,6 +15,10 @@ export default function NflBoard({
   games: Array<Omit<Game, "kickoff"> & { kickoff: string | null }>;
   week: number;
 }) {
+  // Prediction markets list binary outcomes, so a balanced spread is not a
+  // natural product there and usually nothing has one. Rather than a column of
+  // "not offered", show it only if at least one game actually has a spread.
+  const anySpread = games.some((g) => g.spread !== null);
   const use = (description: string, odds: number) => {
     const desc = document.querySelector<HTMLInputElement>("#description");
     const oddsField = document.querySelector<HTMLInputElement>("#odds");
@@ -61,19 +65,23 @@ export default function NflBoard({
             )}
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div
+            className={`grid gap-2 ${anySpread ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+          >
             <MarketColumn
               title="Moneyline"
               outcomes={game.moneyline}
               game={`${game.away} ${game.separator} ${game.home}`}
               onPick={use}
             />
-            <MarketColumn
-              title="Spread"
-              outcomes={game.spread}
-              game={`${game.away} ${game.separator} ${game.home}`}
-              onPick={use}
-            />
+            {anySpread && (
+              <MarketColumn
+                title="Spread"
+                outcomes={game.spread}
+                game={`${game.away} ${game.separator} ${game.home}`}
+                onPick={use}
+              />
+            )}
             <MarketColumn
               title="Total"
               outcomes={game.total}

@@ -174,13 +174,89 @@ export function buildBoard(markets: PolyMarket[], week: number): Game[] {
     }
 
     const kind = classify(market.question);
-    // First market of a kind wins; they arrive busiest-first, so that is the
-    // most liquid one.
-    if (game[kind] === null) game[kind] = market.outcomes;
+    // First market of a kind wins.
+    if (game[kind] === null) {
+      game[kind] = withLine(market.outcomes, market.question);
+    }
   }
 
   return [...games.values()].sort((a, b) => {
     if (a.kickoff && b.kickoff) return a.kickoff.getTime() - b.kickoff.getTime();
     return a.away.localeCompare(b.away);
   });
+}
+
+/**
+ * Make sure an Over/Under label carries its number.
+ *
+ * Polymarket often labels the two sides just "Over" and "Under", with the
+ * number only in the question. On a board that reads as "Over ... what?", so
+ * the line is lifted out of the question and appended.
+ */
+export function withLine(
+  outcomes: MarketOutcome[],
+  question: string,
+): MarketOutcome[] {
+  // Already numbered? Leave it alone.
+  if (outcomes.some((o) => /\d/.test(o.label))) return outcomes;
+
+  const match = question.match(/(\d+(?:\.\d+)?)\s*$/) ??
+    question.match(/(?:over|under|o\/u|total|by)\s*(\d+(?:\.\d+)?)/i);
+  if (!match) return outcomes;
+
+  const line = match[1];
+  return outcomes.map((o) =>
+    /^(over|under)$/i.test(o.label.trim())
+      ? { ...o, label: `${o.label.trim()} ${line}` }
+      : o,
+  );
+}
+
+export type BoardDiagnostics = {
+  fetched: number;
+  games: number;
+  futures: number;
+  otherWeeks: number;
+  undated: number;
+  unparsed: number;
+};
+
+/**
+ * Why the board looks the way it does.
+ *
+ * Shown to the commissioner so "only two games" is a number they can read
+ * rather than something to guess at.
+ */
+export function diagnose(markets: PolyMarket[], week: number): BoardDiagnostics {
+  const d: BoardDiagnostics = {
+    fetched: markets.length,
+    games: 0,
+    futures: 0,
+    otherWeeks: 0,
+    undated: 0,
+    unparsed: 0,
+  };
+
+  for (const m of markets) {
+    if (!isGameMarket(m.question)) {
+      d.futures += 1;
+      continue;
+    }
+    if (!extractTeams(m.question)) {
+      d.unparsed += 1;
+      continue;
+    }
+    const kickoff = m.endDate ? new Date(m.endDate) : null;
+    if (!kickoff || Number.isNaN(kickoff.getTime())) {
+      d.undated += 1;
+      continue;
+    }
+    if (weekOfKickoff(kickoff) !== week) {
+      d.otherWeeks += 1;
+      continue;
+    }
+    d.games += 1;
+  }
+
+  return d;
 }

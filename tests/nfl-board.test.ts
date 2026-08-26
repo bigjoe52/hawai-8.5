@@ -273,3 +273,88 @@ test("a slash inside a real team name is not stripped", () => {
   // Nothing in the NFL, but the rule must not eat a legitimate word.
   assert.equal(extractTeams("Jets @ Real/Madrid")!.home, "Real/Madrid");
 });
+
+/* --- Totals must carry their number --------------------------------------- */
+
+import { withLine, diagnose } from "../src/lib/nfl-board.ts";
+
+const bare = [
+  { label: "Over", probability: 0.5, odds: 100 },
+  { label: "Under", probability: 0.5, odds: 100 },
+];
+
+test("a bare Over/Under gets the line from the question", () => {
+  const out = withLine(bare, "Dolphins vs Raiders total points 44.5");
+  assert.deepEqual(out.map((o) => o.label), ["Over 44.5", "Under 44.5"]);
+});
+
+test("the line is found mid-sentence too", () => {
+  assert.equal(withLine(bare, "Will the total go over 47.5 points?")[0].label, "Over 47.5");
+  assert.equal(withLine(bare, "Chiefs vs Broncos o/u 51")[0].label, "Over 51");
+});
+
+test("labels that already carry a number are left alone", () => {
+  const numbered = [
+    { label: "Over 44.5", probability: 0.5, odds: 100 },
+    { label: "Under 44.5", probability: 0.5, odds: 100 },
+  ];
+  assert.deepEqual(withLine(numbered, "anything 99"), numbered);
+});
+
+test("a question with no number leaves the labels unchanged", () => {
+  assert.deepEqual(withLine(bare, "Dolphins vs Raiders total points"), bare);
+});
+
+test("team names are never mistaken for the line", () => {
+  const teams = [
+    { label: "49ers", probability: 0.5, odds: 100 },
+    { label: "Rams", probability: 0.5, odds: 100 },
+  ];
+  // Contains a digit already, so it is left alone -- "49ers" stays "49ers".
+  assert.deepEqual(withLine(teams, "Rams @ 49ers 44.5"), teams);
+});
+
+test("the board applies it end to end", () => {
+  const totalMarket = {
+    ...market("Bills @ Jets total points 44.5", WEEK2_SUNDAY),
+    outcomes: bare,
+  };
+  const board = buildBoard([market("Bills @ Jets", WEEK2_SUNDAY), totalMarket], 2);
+  assert.deepEqual(board[0].total!.map((o) => o.label), ["Over 44.5", "Under 44.5"]);
+});
+
+/* --- Diagnostics ---------------------------------------------------------- */
+
+test("diagnose accounts for every market it was given", () => {
+  const markets = [
+    market("Chiefs @ Broncos", WEEK2_SUNDAY),
+    market("Bills @ Jets", WEEK2_SUNDAY),
+    market("Packers @ Bears", WEEK3_SUNDAY),
+    market("Which team will win the Super Bowl?", WEEK2_SUNDAY),
+    market("NFL MVP", WEEK2_SUNDAY),
+    { ...market("Rams @ 49ers", WEEK2_SUNDAY), endDate: null },
+  ];
+  const d = diagnose(markets, 2);
+  assert.equal(d.fetched, 6);
+  assert.equal(d.games, 2);
+  assert.equal(d.otherWeeks, 1);
+  assert.equal(d.futures, 2);
+  assert.equal(d.undated, 1);
+  // Every market is counted exactly once.
+  assert.equal(
+    d.games + d.otherWeeks + d.futures + d.undated + d.unparsed,
+    d.fetched,
+  );
+});
+
+test("diagnose's game count matches what the board renders", () => {
+  const markets = [
+    market("Chiefs @ Broncos", WEEK2_SUNDAY),
+    market("Chiefs @ Broncos total", WEEK2_SUNDAY),
+    market("Bills @ Jets", WEEK2_SUNDAY),
+    market("NFL MVP", WEEK2_SUNDAY),
+  ];
+  // Three markets are this week's games; they collapse into two matchups.
+  assert.equal(diagnose(markets, 2).games, 3);
+  assert.equal(buildBoard(markets, 2).length, 2);
+});

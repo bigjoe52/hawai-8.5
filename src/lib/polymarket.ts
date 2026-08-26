@@ -151,15 +151,21 @@ export function parseMarkets(payload: unknown): PolyMarket[] {
  * from time to time; if `nfl` stops matching, it can be changed without a
  * code edit.
  */
-export async function getNflMarkets(limit = 60): Promise<PolyResult<PolyMarket[]>> {
+export async function getNflMarkets(limit = 500): Promise<PolyResult<PolyMarket[]>> {
   const tag = process.env.POLYMARKET_TAG ?? "nfl";
   const query = [
     `tag_slug=${encodeURIComponent(tag)}`,
     "closed=false",
     "active=true",
     `limit=${limit}`,
-    "order=volume",
-    "ascending=false",
+    // Soonest-resolving first, which puts this week's games at the front.
+    //
+    // Ordering by volume instead is a trap: season-long futures -- Super Bowl
+    // winner, MVP, and a win total for all 32 teams -- carry far more volume
+    // than any single game, so the first page comes back almost entirely
+    // futures and barely a game survives the filter.
+    "order=endDate",
+    "ascending=true",
   ].join("&");
 
   const res = await get<unknown>(`/events?${query}`);

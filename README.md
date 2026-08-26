@@ -276,8 +276,16 @@ to American odds. Click any line to use it as your leg; you can still edit it.
 
 Only actual games appear. Futures, awards and season-long props — Super Bowl
 winner, MVP, "will any team score 40+", season win totals — are filtered out,
-and a game only shows in the week its kickoff falls in. A market a game
-doesn't have reads *not offered* rather than leaving a blank to interpret.
+and a game only shows in the week its kickoff falls in.
+
+**Spreads generally won't appear.** Polymarket is a prediction market, not a
+book: it lists binary outcomes, so a balanced −110 spread isn't a natural
+product there. The spread column only renders if at least one game actually
+has one, rather than showing a column of *not offered*.
+
+The commissioner sees a line under the board accounting for every market
+fetched — how many were priced for this week, how many belonged to other
+weeks, how many were futures. If the board ever looks short, that says why.
 
 Where Polymarket words a game as "A @ B" the board keeps the home side; where
 it says "A vs B" the board prints it back the same way rather than guessing

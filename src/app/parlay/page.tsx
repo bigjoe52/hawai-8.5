@@ -7,7 +7,7 @@ import { currentWeek, normaliseWeek } from "@/lib/week.ts";
 import { resolvePlacer } from "@/lib/placer.ts";
 import { getNflMarkets } from "@/lib/polymarket.ts";
 import NflBoard from "@/components/nfl-board.tsx";
-import { buildBoard } from "@/lib/nfl-board.ts";
+import { buildBoard, diagnose } from "@/lib/nfl-board.ts";
 import BumBanner from "@/components/bum-banner.tsx";
 import {
   combinedDecimalOdds,
@@ -58,6 +58,7 @@ export default async function ParlayPage({
         kickoff: g.kickoff ? g.kickoff.toISOString() : null,
       }))
     : [];
+  const boardStats = markets.ok ? diagnose(markets.data, week) : null;
 
   const myLeg = parlay.legs.find((l) => l.userId === user.id);
   const missing = members.filter(
@@ -198,6 +199,17 @@ export default async function ParlayPage({
               subtitle="Live prices from Polymarket. Click any line to use it as your leg."
             >
               <NflBoard games={games} week={week} />
+              {user.isAdmin && boardStats && (
+                <p className="mt-4 border-t border-white/5 pt-3 text-xs text-white/30">
+                  Commissioner view — of {boardStats.fetched} markets Polymarket
+                  returned: {boardStats.games} priced this week,{" "}
+                  {boardStats.otherWeeks} in other weeks, {boardStats.futures}{" "}
+                  futures or props
+                  {boardStats.undated > 0 && `, ${boardStats.undated} with no date`}
+                  {boardStats.unparsed > 0 && `, ${boardStats.unparsed} unreadable`}
+                  .
+                </p>
+              )}
             </Card>
           ) : (
             <Card title={`Week ${week} NFL board`}>
