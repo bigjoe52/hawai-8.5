@@ -285,11 +285,23 @@ export async function cancelSideBetAction(formData: FormData): Promise<void> {
   revalidatePath("/side-bets");
 }
 
+/**
+ * Record who won a matched side bet.
+ *
+ * Either person in the bet can do this, not just the commissioner. These are
+ * two friends who both watched the game; making a third person adjudicate was
+ * pure friction. The commissioner can still settle anything, for the cases
+ * where both of them have gone quiet.
+ *
+ * The `status = 'matched'` condition keeps it idempotent, and the identity
+ * check lives in the WHERE clause so it cannot be bypassed from the browser.
+ */
 export async function settleSideBetAction(formData: FormData): Promise<void> {
-  const admin = await requireAdmin();
+  const user = await requireUser();
   const betId = Number(formData.get("betId"));
   const winner = String(formData.get("winner"));
 
+  if (!Number.isInteger(betId)) return;
   if (!["proposer", "taker", "push"].includes(winner)) {
     throw new Error("Pick a winner.");
   }
@@ -301,14 +313,22 @@ export async function settleSideBetAction(formData: FormData): Promise<void> {
   await sql`
     UPDATE side_bets
     SET winner = ${winner}, status = ${status},
-        settled_by = ${admin.id}, settled_at = NOW()
-    WHERE id = ${betId} AND status = 'matched'
+        settled_by = ${user.id}, settled_at = NOW()
+    WHERE id = ${betId}
+      AND status = 'matched'
+      AND (
+        ${user.isAdmin}
+        OR proposer_id = ${user.id}
+        OR taker_id = ${user.id}
+      )
   `;
 
   revalidatePath("/side-bets");
   revalidatePath("/ledger");
   revalidatePath("/admin");
+  revalidatePath("/");
 }
+
 
 /**
  * Post one of the generated lines as a side bet.

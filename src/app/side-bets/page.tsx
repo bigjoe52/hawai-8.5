@@ -13,6 +13,7 @@ import {
   cancelSideBetAction,
   markPaidAction,
   markUnpaidAction,
+  settleSideBetAction,
 } from "@/lib/actions.ts";
 import {
   Nav,
@@ -337,10 +338,32 @@ function BetCard({
               {bet.proposerName} owes {formatCents(bet.stakeCents)}
             </span>
           </p>
-          {bet.marketKind && (
+          {bet.marketKind ? (
             <p className="mt-2 text-xs text-white/30">
               Grades itself when the week ends.
             </p>
+          ) : (
+            // A bet somebody wrote themselves cannot be graded in code, so
+            // either person in it says who won -- no need to wait on the
+            // commissioner.
+            (bet.proposerId === userId || bet.takerId === userId || isAdmin) && (
+              <div className="mt-3">
+                <p className="mb-2 text-xs text-white/40">Who won?</p>
+                <div className="flex flex-wrap gap-2">
+                  <SettleButton
+                    betId={bet.id}
+                    winner="proposer"
+                    label={`${bet.proposerName} — collects ${formatCents(bet.takerStakeCents)}`}
+                  />
+                  <SettleButton
+                    betId={bet.id}
+                    winner="taker"
+                    label={`${bet.takerName} — collects ${formatCents(bet.stakeCents)}`}
+                  />
+                  <SettleButton betId={bet.id} winner="push" label="Push" />
+                </div>
+              </div>
+            )
           )}
         </>
       )}
@@ -386,6 +409,26 @@ function BetCard({
         </p>
       )}
     </>
+  );
+}
+
+function SettleButton({
+  betId,
+  winner,
+  label,
+}: {
+  betId: number;
+  winner: string;
+  label: string;
+}) {
+  return (
+    <form action={settleSideBetAction}>
+      <input type="hidden" name="betId" value={betId} />
+      <input type="hidden" name="winner" value={winner} />
+      <button type="submit" className={ghostButtonClass}>
+        {label}
+      </button>
+    </form>
   );
 }
 

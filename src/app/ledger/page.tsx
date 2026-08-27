@@ -2,7 +2,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth.ts";
 import { configProblems } from "@/lib/config.ts";
 import SetupNeeded from "@/components/setup-needed.tsx";
-import { listGradedBets, listUnpaidBets, listMembers } from "@/lib/queries.ts";
+import {
+  listGradedBets,
+  listUnpaidBets,
+  listMembers,
+  listParlayHistory,
+} from "@/lib/queries.ts";
+import ParlayRecordTable from "@/components/parlay-record.tsx";
 import { standings, pairwiseDebts, netByUser, assertBalanced } from "@/lib/ledger.ts";
 import { formatCents } from "@/lib/odds.ts";
 import { Nav, Page, Card, Empty } from "@/components/ui.tsx";
@@ -19,10 +25,11 @@ export default async function LedgerPage() {
 
   // Standings run on everything graded -- a win is a win once the games end.
   // "Who owes who" runs only on what is still unpaid.
-  const [graded, unpaid, members] = await Promise.all([
+  const [graded, unpaid, members, parlays] = await Promise.all([
     listGradedBets(),
     listUnpaidBets(),
     listMembers(),
+    listParlayHistory(),
   ]);
   const nameById = new Map(members.map((m) => [m.id, m.displayName]));
   const name = (id: number) => nameById.get(id) ?? `Player ${id}`;
@@ -95,6 +102,13 @@ export default async function LedgerPage() {
               })}
             </ul>
           )}
+        </Card>
+
+        <Card
+          title="Parlay record"
+          subtitle="The weekly ticket is a group bet against the book, so it is counted separately from what members owe each other."
+        >
+          <ParlayRecordTable rows={parlays} />
         </Card>
 
         <Card

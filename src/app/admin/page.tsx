@@ -196,12 +196,12 @@ export default async function AdminPage({
                     <SettleButton
                       betId={bet.id}
                       winner="proposer"
-                      label={`${bet.proposerName} (${bet.proposerSide}) — collects ${formatCents(bet.takerStakeCents)}`}
+                      label={`${bet.proposerName} (${bet.proposerSide}) wins — collects ${formatCents(bet.takerStakeCents)}`}
                     />
                     <SettleButton
                       betId={bet.id}
                       winner="taker"
-                      label={`${bet.takerName} (${bet.takerSide}) — collects ${formatCents(bet.stakeCents)}`}
+                      label={`${bet.takerName} (${bet.takerSide}) wins — collects ${formatCents(bet.stakeCents)}`}
                     />
                     <SettleButton betId={bet.id} winner="push" label="Push" />
                   </div>
@@ -331,7 +331,7 @@ function SettleButton({
       <input type="hidden" name="betId" value={betId} />
       <input type="hidden" name="winner" value={winner} />
       <button type="submit" className={ghostButtonClass}>
-        {label} wins
+        {label}
       </button>
     </form>
   );

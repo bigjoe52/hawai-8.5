@@ -267,3 +267,66 @@ export async function listMyOpenTabs(userId: number): Promise<SideBet[]> {
   `;
   return rows.map(toSideBet);
 }
+
+export type ParlayRecord = {
+  season: number;
+  week: number;
+  status: "open" | "locked" | "won" | "lost";
+  stakeCents: number;
+  legCount: number;
+  wonLegs: number;
+  lostLegs: number;
+  pendingLegs: number;
+  /** American odds of every graded leg, for the combined price. */
+  legOdds: number[];
+  /** Whoever's leg killed it. Usually one, occasionally more. */
+  bustedBy: string[];
+  placerName: string | null;
+};
+
+/**
+ * Every week's parlay, newest first.
+ *
+ * One row per week with enough detail to show the ticket's story: how many
+ * legs, how it finished, what it paid, and whose leg ended it.
+ */
+export async function listParlayHistory(): Promise<ParlayRecord[]> {
+  const rows = await sql`
+    SELECT
+      p.season, p.week, p.status, p.stake_cents,
+      u.display_name AS placer_name,
+      COUNT(l.id)::int AS leg_count,
+      COUNT(l.id) FILTER (WHERE l.status = 'win')::int     AS won_legs,
+      COUNT(l.id) FILTER (WHERE l.status = 'loss')::int    AS lost_legs,
+      COUNT(l.id) FILTER (WHERE l.status = 'pending')::int AS pending_legs,
+      COALESCE(
+        array_agg(l.odds_american ORDER BY l.created_at)
+          FILTER (WHERE l.id IS NOT NULL),
+        ARRAY[]::int[]
+      ) AS leg_odds,
+      COALESCE(
+        array_agg(DISTINCT lu.display_name) FILTER (WHERE l.status = 'loss'),
+        ARRAY[]::text[]
+      ) AS busted_by
+    FROM parlays p
+    LEFT JOIN parlay_legs l ON l.parlay_id = p.id
+    LEFT JOIN users lu ON lu.id = l.user_id
+    LEFT JOIN users u ON u.id = p.placer_user_id
+    GROUP BY p.id, p.season, p.week, p.status, p.stake_cents, u.display_name
+    ORDER BY p.season DESC, p.week DESC
+  `;
+
+  return rows.map((r: any) => ({
+    season: r.season,
+    week: r.week,
+    status: r.status,
+    stakeCents: r.stake_cents,
+    legCount: r.leg_count,
+    wonLegs: r.won_legs,
+    lostLegs: r.lost_legs,
+    pendingLegs: r.pending_legs,
+    legOdds: (r.leg_odds ?? []).map(Number),
+    bustedBy: r.busted_by ?? [],
+    placerName: r.placer_name,
+  }));
+}

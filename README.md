@@ -216,6 +216,12 @@ nobody pressing anything. It happens on page load, and the bet is marked
 A bet somebody typed out in their own words cannot be graded in code, so those
 stay with the commissioner.
 
+### Settling a side bet
+**Either person in a bet can say who won** — they both watched the game, and
+making a third person adjudicate was pure friction. The commissioner can still
+settle anything, for when both of them have gone quiet. Bets placed from the
+board don't need this at all: they grade themselves.
+
 ### Unpaid, then paid
 A graded bet lands in **Unpaid** — the result is known, the money isn't moved.
 Only the **winner** can mark it paid (or the commissioner, for when somebody
@@ -223,6 +229,15 @@ settles up in person). The loser saying "I paid you" is not the same thing.
 
 Paid bets drop off the ledger's who-owes-who but stay in the standings: a win
 is a win whether or not anybody has settled up.
+
+### The parlay record
+The ledger also carries a week-by-week parlay table — result, legs won, the
+combined price, stake, what it returned, and whose leg busted it — plus the
+season totals: record, staked, returned, net.
+
+It is kept apart from who-owes-who deliberately. The weekly ticket is a group
+bet against a sportsbook, not money moving between members, so mixing the two
+would make both numbers meaningless.
 
 ### Tabs
 Side bets are split into **Bets I can take** (open, posted by other people),
