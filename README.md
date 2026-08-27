@@ -235,7 +235,15 @@ The ledger also carries a week-by-week parlay table — result, legs won, the
 combined price, stake, what it returned, and whose leg busted it — plus the
 season totals: record, staked, returned, net.
 
-It is kept apart from who-owes-who deliberately. The weekly ticket is a group
+Below it sits **leg records**: everyone's season W-L on their own legs, their
+hit rate, and their **solo busts** — weeks their leg was the only one that
+lost, so the ticket was alive until they personally ended it. Ranked best
+first; whoever is last gets labelled *worst in the league*, but only once they
+have at least three decided legs, so nobody gets branded off one bad Sunday.
+
+Nobody is expected to hit a ten-leg parlay. The running record is the point.
+
+The parlay record is kept apart from who-owes-who deliberately. The weekly ticket is a group
 bet against a sportsbook, not money moving between members, so mixing the two
 would make both numbers meaningless.
 
@@ -356,6 +364,7 @@ src/
     polymarket.ts      live odds from Polymarket            <- unit tested
     nfl-board.ts       the week's slate, futures removed     <- unit tested
     placer.ts          who has to place the parlay
+    leg-standings.ts   ranking everyone's legs             <- unit tested
     lines.ts           generates the betting board          <- unit tested
     auth.ts            login, session cookies
     db.ts              Postgres connection + query helper

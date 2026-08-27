@@ -7,8 +7,10 @@ import {
   listUnpaidBets,
   listMembers,
   listParlayHistory,
+  listLegRecords,
 } from "@/lib/queries.ts";
 import ParlayRecordTable from "@/components/parlay-record.tsx";
+import LegStandings from "@/components/leg-standings.tsx";
 import { standings, pairwiseDebts, netByUser, assertBalanced } from "@/lib/ledger.ts";
 import { formatCents } from "@/lib/odds.ts";
 import { Nav, Page, Card, Empty } from "@/components/ui.tsx";
@@ -25,11 +27,12 @@ export default async function LedgerPage() {
 
   // Standings run on everything graded -- a win is a win once the games end.
   // "Who owes who" runs only on what is still unpaid.
-  const [graded, unpaid, members, parlays] = await Promise.all([
+  const [graded, unpaid, members, parlays, legRecords] = await Promise.all([
     listGradedBets(),
     listUnpaidBets(),
     listMembers(),
     listParlayHistory(),
+    listLegRecords(),
   ]);
   const nameById = new Map(members.map((m) => [m.id, m.displayName]));
   const name = (id: number) => nameById.get(id) ?? `Player ${id}`;
@@ -112,7 +115,14 @@ export default async function LedgerPage() {
         </Card>
 
         <Card
-          title="Standings"
+          title="Leg records"
+          subtitle="How everyone's parlay legs have gone this season. Nobody is hitting a ten-leg ticket — this is the part worth arguing about."
+        >
+          <LegStandings records={legRecords} currentUserId={user.id} />
+        </Card>
+
+        <Card
+          title="Side bet standings"
           subtitle="Net across every graded side bet, paid or not."
         >
           {rows.length === 0 ? (

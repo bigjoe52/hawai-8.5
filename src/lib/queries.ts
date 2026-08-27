@@ -330,3 +330,59 @@ export async function listParlayHistory(): Promise<ParlayRecord[]> {
     placerName: r.placer_name,
   }));
 }
+
+export type LegRecord = {
+  userId: number;
+  displayName: string;
+  wins: number;
+  losses: number;
+  pushes: number;
+  pending: number;
+  /**
+   * Weeks this player's leg lost when it was the ONLY leg that lost -- so the
+   * ticket was alive until they, personally, ended it. The roasting stat.
+   */
+  soloBusts: number;
+};
+
+/**
+ * Each member's season record on their parlay legs.
+ *
+ * Nobody expects to hit a ten-leg parlay; the point is the running record, so
+ * this counts every leg a person has put in and how often theirs was the one
+ * that killed an otherwise-live ticket.
+ *
+ * Everyone appears, including members who have not submitted a leg yet.
+ */
+export async function listLegRecords(): Promise<LegRecord[]> {
+  const rows = await sql`
+    SELECT
+      u.id AS user_id,
+      u.display_name,
+      COUNT(l.id) FILTER (WHERE l.status = 'win')::int     AS wins,
+      COUNT(l.id) FILTER (WHERE l.status = 'loss')::int    AS losses,
+      COUNT(l.id) FILTER (WHERE l.status = 'push')::int    AS pushes,
+      COUNT(l.id) FILTER (WHERE l.status = 'pending')::int AS pending,
+      COUNT(l.id) FILTER (
+        WHERE l.status = 'loss'
+          AND (
+            SELECT COUNT(*) FROM parlay_legs sib
+            WHERE sib.parlay_id = l.parlay_id AND sib.status = 'loss'
+          ) = 1
+      )::int AS solo_busts
+    FROM users u
+    LEFT JOIN parlay_legs l ON l.user_id = u.id
+    GROUP BY u.id, u.display_name
+    ORDER BY u.display_name
+  `;
+
+  return rows.map((r: any) => ({
+    userId: r.user_id,
+    displayName: r.display_name,
+    wins: r.wins,
+    losses: r.losses,
+    pushes: r.pushes,
+    pending: r.pending,
+    soloBusts: r.solo_busts,
+  }));
+}
