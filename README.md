@@ -167,6 +167,15 @@ tracked code, so a `git pull` can never collide with them. (An earlier version
 kept the list inside `scripts/seed-users.mjs`, which meant any change to that
 script fought with your edits.)
 
+Because it is gitignored, it is *missing* in a fresh clone — so `db:seed`
+refuses to run without it rather than quietly seeding the example names, which
+would add ten strangers to your league and a second commissioner. If you
+actually want the example names (a scratch database, a demo), ask for them:
+
+```bash
+npm run db:seed -- --placeholder
+```
+
 **You can also edit it afterwards.** Re-running `npm run db:seed` is safe and
 does the sensible thing:
 
@@ -181,9 +190,11 @@ does the sensible thing:
 npm run db:seed -- --prune   # also delete accounts no longer in LEAGUE
 ```
 
-`--prune` refuses to delete anyone who already has parlay legs or side bets,
-since removing them would take that history with them. It tells you who and
-why instead.
+`--prune` refuses to delete anyone who already has any history at all — parlay
+legs, side bets on either side, weeks they placed the ticket, or anything they
+graded, settled, or marked paid — since removing them would take that history
+with them. It tells you who and why instead, and does the whole thing in one
+transaction so a refusal leaves the database exactly as it was.
 
 ### 6. Redeploy
 
@@ -221,6 +232,11 @@ stay with the commissioner.
 making a third person adjudicate was pure friction. The commissioner can still
 settle anything, for when both of them have gone quiet. Bets placed from the
 board don't need this at all: they grade themselves.
+
+Settled it the wrong way? The commissioner gets a **Reopen** button on any bet
+that has been settled but not yet paid. It puts the bet back to matched and
+clears the winner, so it can be called again. Once someone has marked it paid,
+it stays paid — that is a real-world event the site should not undo.
 
 ### Unpaid, then paid
 A graded bet lands in **Unpaid** — the result is known, the money isn't moved.

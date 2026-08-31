@@ -25,11 +25,25 @@ export const TIMEZONE = "America/New_York";
 export const LAST_WEEK = 18;
 
 /** The Tuesday on which week 2 begins, as a plain Eastern calendar date. */
-const WEEK_2_DATE = parseAnchor(process.env.LEAGUE_WEEK2_DATE) ?? {
-  year: 2026,
-  month: 9,
-  day: 15,
-};
+const WEEK_2_DATE = resolveAnchor();
+
+function resolveAnchor(): { year: number; month: number; day: number } {
+  const parsed = parseAnchor(process.env.LEAGUE_WEEK2_DATE);
+  const fallback = { year: 2026, month: 9, day: 15 };
+  const anchor = parsed ?? fallback;
+
+  // They default independently, so setting only LEAGUE_SEASON leaves the
+  // anchor a year behind -- every date then computes past week 18 and clamps,
+  // pinning the whole season to week 18 with no error. Fail loudly instead.
+  if (anchor.year !== SEASON) {
+    throw new Error(
+      `LEAGUE_SEASON is ${SEASON} but the week-2 anchor is ${anchor.year}-` +
+        `${String(anchor.month).padStart(2, "0")}-${String(anchor.day).padStart(2, "0")}. ` +
+        "Set LEAGUE_WEEK2_DATE to the Tuesday week 2 starts in that season.",
+    );
+  }
+  return anchor;
+}
 
 function parseAnchor(
   value: string | undefined,

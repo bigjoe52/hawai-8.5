@@ -200,8 +200,12 @@ export function withLine(
   // Already numbered? Leave it alone.
   if (outcomes.some((o) => /\d/.test(o.label))) return outcomes;
 
-  const match = question.match(/(\d+(?:\.\d+)?)\s*$/) ??
-    question.match(/(?:over|under|o\/u|total|by)\s*(\d+(?:\.\d+)?)/i);
+  // Look for the number attached to the over/under FIRST. A trailing number is
+  // very often something else -- "in Week 3", "NFL 2026", "Sept 20" -- and
+  // taking it produced lines like "Over 3".
+  const match =
+    question.match(/(?:over|under|o\/u|total(?:\s+points)?|by)\s*(\d+(?:\.\d+)?)/i) ??
+    question.match(/(\d+(?:\.\d+)?)\s*$/);
   if (!match) return outcomes;
 
   const line = match[1];

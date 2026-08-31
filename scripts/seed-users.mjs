@@ -42,17 +42,30 @@ const PLACEHOLDER = [
   { username: "sean", displayName: "Sean" },
 ];
 
-const LEAGUE = readRoster();
+const LEAGUE = process.argv.includes("--placeholder")
+  ? PLACEHOLDER
+  : readRoster();
 
 function readRoster() {
   const file = new URL("../league.roster.json", import.meta.url);
   if (!existsSync(file)) {
-    console.log(
-      "\nNo league.roster.json found — using placeholder names.\n" +
-        "Copy league.roster.example.json to league.roster.json and put your\n" +
-        "actual league in it.\n",
+    // Refuse rather than substitute. league.roster.json is gitignored, so it
+    // is missing in every fresh clone and on any second machine -- exactly
+    // when someone would run this against the LIVE database. Falling back to
+    // the placeholder names there would add ten strangers to the league,
+    // one of them a second commissioner, and --prune would then delete the
+    // real members as strays.
+    console.error(
+      "\nNo league.roster.json found — refusing to run.\n\n" +
+        "This file is gitignored, so it is missing in a fresh clone. Seeding\n" +
+        "with the placeholder names would add ten accounts that are not your\n" +
+        "league, including a second commissioner.\n\n" +
+        "  cp league.roster.example.json league.roster.json\n" +
+        "  # then put your actual league in it\n\n" +
+        "If you genuinely want the placeholder names (a scratch database, a\n" +
+        "demo), pass --placeholder.\n",
     );
-    return PLACEHOLDER;
+    process.exit(1);
   }
 
   let parsed;
@@ -177,7 +190,15 @@ const strays = await sql`
   SELECT u.id, u.username,
          (SELECT count(*) FROM parlay_legs l WHERE l.user_id = u.id)::int AS legs,
          (SELECT count(*) FROM side_bets b
-           WHERE b.proposer_id = u.id OR b.taker_id = u.id)::int AS bets
+           WHERE b.proposer_id = u.id OR b.taker_id = u.id)::int AS bets,
+         -- Every other column that points at a user. Without these the delete
+         -- fails on a foreign key mid-loop, after earlier strays are gone.
+         (
+           (SELECT count(*) FROM parlays p WHERE p.placer_user_id = u.id)
+           + (SELECT count(*) FROM parlay_legs l WHERE l.graded_by = u.id)
+           + (SELECT count(*) FROM side_bets b WHERE b.settled_by = u.id)
+           + (SELECT count(*) FROM side_bets b WHERE b.paid_by = u.id)
+         )::int AS refs
   FROM users u
   WHERE lower(u.username) <> ALL(${usernames})
   ORDER BY u.username
@@ -185,30 +206,45 @@ const strays = await sql`
 
 if (strays.length > 0) {
   const prune = process.argv.includes("--prune");
-  const withData = strays.filter((s) => s.legs > 0 || s.bets > 0);
+  const withData = strays.filter((s) => s.legs > 0 || s.bets > 0 || s.refs > 0);
 
   if (!prune) {
     console.log(
-      `\nIn the database but not in LEAGUE: ${strays.map((s) => s.username).join(", ")}`,
+      `\nIn the database but not in your roster: ${strays.map((s) => s.username).join(", ")}`,
     );
     console.log("They can still log in. To delete them:  npm run db:seed -- --prune");
   } else if (withData.length > 0) {
     // Deleting a user cascades to their legs and bets. Never do that silently.
-    console.error("\nRefusing to delete accounts that already have bets:");
+    console.error("\nRefusing to delete accounts that have league history:");
     for (const s of withData) {
-      console.error(`  ${s.username} -- ${s.legs} parlay leg(s), ${s.bets} side bet(s)`);
+      const parts = [];
+      if (s.legs > 0) parts.push(`${s.legs} parlay leg(s)`);
+      if (s.bets > 0) parts.push(`${s.bets} side bet(s)`);
+      if (s.refs > 0) parts.push(`${s.refs} other reference(s) (placed a week, graded, or settled something)`);
+      console.error(`  ${s.username} -- ${parts.join(", ")}`);
     }
     console.error(
-      "\nDeleting them would delete that history too. Remove their bets first,\n" +
-        "or leave the accounts in place.\n",
+      "\nDeleting them would take that history with them. Nothing was\n" +
+        "deleted -- remove their history first, or leave the accounts.\n",
     );
     await client.end();
     process.exit(1);
   } else {
-    for (const s of strays) {
-      await sql`DELETE FROM users WHERE id = ${s.id}`;
+    // All or nothing: a failure partway through must not leave the league
+    // half-deleted.
+    try {
+      await client.query("BEGIN");
+      for (const s of strays) {
+        await sql`DELETE FROM users WHERE id = ${s.id}`;
+      }
+      await client.query("COMMIT");
+      console.log(`\nDeleted (no history): ${strays.map((s) => s.username).join(", ")}`);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error(`\nDeleted nothing — ${err.message}\n`);
+      await client.end();
+      process.exit(1);
     }
-    console.log(`\nDeleted (no bets): ${strays.map((s) => s.username).join(", ")}`);
   }
 }
 

@@ -34,7 +34,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; error?: string }>;
 }) {
   // Show what needs configuring rather than a bare 500 page.
   const problems = configProblems();
@@ -215,6 +215,12 @@ export default async function AdminPage({
           title="Sleeper accounts"
           subtitle="Link each member to their Sleeper account, then save. Uses Sleeper's permanent user id, so it survives team and handle changes."
         >
+          {params.error === "duplicate-sleeper-link" && (
+            <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              Two members were pointed at the same Sleeper account, so nothing
+              was saved. Each account belongs to one person.
+            </p>
+          )}
           {!sleeperUsers.ok ? (
             <p className="text-sm text-white/50">
               Can&apos;t reach Sleeper to list accounts. {sleeperUsers.error}

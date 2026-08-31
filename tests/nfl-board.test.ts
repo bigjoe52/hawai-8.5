@@ -358,3 +358,24 @@ test("diagnose's game count matches what the board renders", () => {
   assert.equal(diagnose(markets, 2).games, 3);
   assert.equal(buildBoard(markets, 2).length, 2);
 });
+
+/* --- Regressions from the adversarial review ------------------------------ */
+
+test("the over/under number wins over any other number in the question", () => {
+  // These all used to yield "Over 3", "Over 2026", "Over 20" -- the review
+  // found the trailing-number pattern was tried first.
+  const cases: Array<[string, string]> = [
+    ["Will Chiefs @ Broncos go over 47.5 total points in Week 3", "47.5"],
+    ["Chiefs vs Broncos: over/under 47.5 points, NFL 2026", "47.5"],
+    ["Chiefs @ Broncos over/under 44.5 — Sunday Night Football, Sept 20", "44.5"],
+    ["Chiefs @ Broncos total points o/u 47.5 (Week 3)", "47.5"],
+    ["Chiefs @ Broncos total points 44.5", "44.5"],
+  ];
+  for (const [question, expected] of cases) {
+    assert.deepEqual(
+      withLine(bare, question).map((o) => o.label),
+      [`Over ${expected}`, `Under ${expected}`],
+      question,
+    );
+  }
+});

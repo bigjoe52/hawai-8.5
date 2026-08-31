@@ -1,5 +1,6 @@
 import { sql } from "./db.ts";
 import { getMatchups, getRosters } from "./sleeper.ts";
+import { currentWeek } from "./week.ts";
 
 /**
  * Who has to place the parlay.
@@ -16,6 +17,8 @@ export type Placer = {
   displayName: string | null;
   /** How we arrived at it, so the page can explain itself. */
   reason: string;
+  /** True only in week 1, which genuinely has no previous week to judge. */
+  isFirstWeek: boolean;
   /** What they scored to earn it, and in which week. Null in week 1. */
   points: number | null;
   fromWeek: number | null;
@@ -36,15 +39,23 @@ export async function resolvePlacer(
     WHERE p.season = ${season} AND p.week = ${week}
   `;
   if (cached?.placer_user_id) {
-    // Re-read the score for the wording. It is cheap, and if Sleeper is down
-    // the name still shows -- just without the number.
-    const points = week > 1 ? (await lowestScorer(week - 1))?.points ?? null : null;
+    // Re-read the score only to caption the cached PERSON, and only use it if
+    // it is still the same person. Otherwise the banner shows one member's
+    // name beside another member's score.
+    let points: number | null = null;
+    if (week > 1) {
+      const current = await lowestScorer(week - 1);
+      if (current && current.userId === cached.placer_user_id) {
+        points = current.points;
+      }
+    }
     return {
       userId: cached.placer_user_id,
       displayName: cached.display_name,
       reason: week === 1 ? "set for week 1" : `came last in week ${week - 1}`,
       points,
       fromWeek: week > 1 ? week - 1 : null,
+      isFirstWeek: week === 1,
     };
   }
 
@@ -60,6 +71,7 @@ export async function resolvePlacer(
         reason: `no member called "${FIRST_PLACER}" — set LEAGUE_FIRST_PLACER`,
         points: null,
         fromWeek: null,
+        isFirstWeek: true,
       };
     }
     await cachePlacer(season, week, user.id);
@@ -69,6 +81,22 @@ export async function resolvePlacer(
       reason: "set for week 1",
       points: null,
       fromWeek: null,
+      isFirstWeek: true,
+    };
+  }
+
+  // Only judge a week that has finished. Otherwise loading next week's page on
+  // a Sunday afternoon brands whoever is temporarily last -- with most teams
+  // yet to play -- and the answer is then cached permanently.
+  const { week: liveWeek } = currentWeek();
+  if (week - 1 >= liveWeek) {
+    return {
+      userId: null,
+      displayName: null,
+      reason: `week ${week - 1} is still being played`,
+      points: null,
+      fromWeek: week - 1,
+      isFirstWeek: false,
     };
   }
 
@@ -77,9 +105,10 @@ export async function resolvePlacer(
     return {
       userId: null,
       displayName: null,
-      reason: `week ${week - 1} scores aren't in yet`,
+      reason: `week ${week - 1} isn't final yet`,
       points: null,
       fromWeek: week - 1,
+      isFirstWeek: false,
     };
   }
 
@@ -90,11 +119,12 @@ export async function resolvePlacer(
     reason: `came last in week ${week - 1}`,
     points: loser.points,
     fromWeek: week - 1,
+    isFirstWeek: false,
   };
 }
 
 /** The member who scored fewest points in a given week. */
-async function lowestScorer(
+export async function lowestScorer(
   week: number,
 ): Promise<{ userId: number; displayName: string; points: number } | null> {
   const leagueId = process.env.SLEEPER_LEAGUE_ID;
@@ -114,22 +144,28 @@ async function lowestScorer(
     rosters.data.map((r) => [r.rosterId, r.ownerId]),
   );
 
-  let worst: { sleeperUserId: string; points: number } | null = null;
-  for (const m of played) {
-    const ownerId = ownerByRoster.get(m.rosterId);
-    if (!ownerId) continue;
-    if (!worst || m.points < worst.points) {
-      worst = { sleeperUserId: ownerId, points: m.points };
+  // Walk from the lowest score upwards and take the first roster whose owner is
+  // actually linked to a member. Picking the league-wide lowest and then
+  // failing when that one person is unlinked meant nine of ten linked still
+  // produced no bum.
+  const candidates = played
+    .map((m) => ({ ownerId: ownerByRoster.get(m.rosterId), points: m.points }))
+    .filter((c): c is { ownerId: string; points: number } => Boolean(c.ownerId))
+    .sort((a, b) => a.points - b.points);
+
+  for (const candidate of candidates) {
+    const [user] = await sql<{ id: number; display_name: string }>`
+      SELECT id, display_name FROM users WHERE sleeper_user_id = ${candidate.ownerId}
+    `;
+    if (user) {
+      return {
+        userId: user.id,
+        displayName: user.display_name,
+        points: candidate.points,
+      };
     }
   }
-  if (!worst) return null;
-
-  const [user] = await sql<{ id: number; display_name: string }>`
-    SELECT id, display_name FROM users WHERE sleeper_user_id = ${worst.sleeperUserId}
-  `;
-  if (!user) return null;
-
-  return { userId: user.id, displayName: user.display_name, points: worst.points };
+  return null;
 }
 
 async function cachePlacer(season: number, week: number, userId: number) {

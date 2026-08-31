@@ -61,6 +61,13 @@ export async function autoSettleWeek(
     return { graded: 0, pushed: 0, skipped: pending.length, error: matchups.error };
   }
 
+  // A week that has not been played comes back as zeroes for every roster, and
+  // zeroes grade perfectly happily: every under and every underdog "wins" on
+  // games nobody played. Only settle once somebody has actually scored.
+  if (!matchups.data.some((m) => m.points > 0)) {
+    return { graded: 0, pushed: 0, skipped: pending.length };
+  }
+
   const pointsByRoster = new Map(matchups.data.map((m) => [m.rosterId, m.points]));
 
   let graded = 0;

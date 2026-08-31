@@ -16,4 +16,15 @@ END $$;
 ALTER TABLE parlays ALTER COLUMN stake_cents SET DEFAULT 1000;
 
 -- Anything still carrying the old zero default becomes the standard $10.
-UPDATE parlays SET stake_cents = 1000 WHERE stake_cents = 0;
+--
+-- Guarded on the column's own default so this fires only on the run that
+-- actually performs the rename. db:setup replays every migration each time,
+-- and an unconditional UPDATE would keep resetting a week the commissioner
+-- deliberately set to $0.
+UPDATE parlays SET stake_cents = 1000
+WHERE stake_cents = 0
+  AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'parlays'
+      AND column_name = 'stake_per_user_cents'
+  );

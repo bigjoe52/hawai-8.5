@@ -80,18 +80,7 @@ export default function ParlayRecordTable({ rows }: { rows: ParlayRecord[] }) {
                     {r.wonLegs}/{r.legCount}
                   </td>
                   <td className="py-2.5 pr-4 text-right font-mono text-sunset-300">
-                    {r.legOdds.length > 0
-                      ? formatAmerican(
-                          decimalToAmerican(
-                            combinedDecimalOdds(
-                              r.legOdds.map((o) => ({
-                                oddsAmerican: o,
-                                status: "win" as const,
-                              })),
-                            ),
-                          ),
-                        )
-                      : "—"}
+                    {formatCombined(r)}
                   </td>
                   <td className="py-2.5 pr-4 text-right font-mono text-white/60">
                     {formatCents(r.stakeCents)}
@@ -139,13 +128,26 @@ export default function ParlayRecordTable({ rows }: { rows: ParlayRecord[] }) {
   );
 }
 
-/** What a winning ticket returned, stake included. */
+/**
+ * What a winning ticket returned, stake included.
+ *
+ * The legs are passed through with their real statuses, so a pushed leg drops
+ * out of the price instead of multiplying into it. Rebuilding them all as
+ * wins -- which this used to do -- overstated both the odds and the payout on
+ * any week somebody pushed.
+ */
 function payoutOf(r: ParlayRecord): number {
-  if (r.legOdds.length === 0) return 0;
-  const decimal = combinedDecimalOdds(
-    r.legOdds.map((o) => ({ oddsAmerican: o, status: "win" as const })),
-  );
-  return Math.round(r.stakeCents * decimal);
+  if (r.legs.length === 0) return 0;
+  return Math.round(r.stakeCents * combinedDecimalOdds(r.legs));
+}
+
+/** The ticket's combined price, or a dash when there is no price to show. */
+function formatCombined(r: ParlayRecord): string {
+  if (r.legs.length === 0) return "—";
+  const decimal = combinedDecimalOdds(r.legs);
+  // An all-push ticket multiplies out to exactly 1, which is not a price.
+  if (decimal <= 1) return "—";
+  return formatAmerican(decimalToAmerican(decimal));
 }
 
 function Stat({

@@ -12,6 +12,7 @@ import {
 import { parseStakeToCents } from "./odds.ts";
 import { winningsFor } from "./lines.ts";
 import { autoSettleFinishedWeeks } from "./settle.ts";
+import { currentWeek } from "./week.ts";
 
 /**
  * Every write to the database goes through this file.
@@ -110,6 +111,17 @@ export async function submitLegAction(
     return { error: "This week's parlay is locked. Legs can't change now." };
   }
 
+  // Only a leg that has not been graded yet can change. Otherwise the person
+  // whose leg busted the ticket could rewrite it -- or its price -- after the
+  // fact, while keeping the grade.
+  const [existing] = await sql<{ status: string }>`
+    SELECT status FROM parlay_legs
+    WHERE parlay_id = ${parlayId} AND user_id = ${user.id}
+  `;
+  if (existing && existing.status !== "pending") {
+    return { error: "Your leg has already been graded — it can't be changed." };
+  }
+
   await sql`
     INSERT INTO parlay_legs (parlay_id, user_id, description, odds_american)
     VALUES (${parlayId}, ${user.id}, ${description}, ${odds})
@@ -117,6 +129,7 @@ export async function submitLegAction(
       SET description = EXCLUDED.description,
           odds_american = EXCLUDED.odds_american,
           updated_at = NOW()
+      WHERE parlay_legs.status = 'pending'
   `;
 
   revalidatePath("/parlay");
@@ -130,10 +143,13 @@ export async function deleteLegAction(formData: FormData): Promise<void> {
 
   // The user_id check in the WHERE clause is what stops someone deleting
   // another player's leg by editing the form.
+  // A graded leg stays put. Deleting it would erase the loss, the solo-bust
+  // count, and the "busted by" note on the ledger.
   await sql`
     DELETE FROM parlay_legs
     WHERE id = ${legId}
       AND user_id = ${user.id}
+      AND status = 'pending'
       AND parlay_id IN (SELECT id FROM parlays WHERE status = 'open')
   `;
   revalidatePath("/parlay");
@@ -220,6 +236,10 @@ export async function postSideBetAction(
   const takerSide = String(formData.get("takerSide") ?? "").trim();
   const matchupId = String(formData.get("matchupId") ?? "").trim();
 
+  const now = currentWeek();
+  if (season !== now.season || week !== now.week) {
+    return { error: "You can only post bets for the current week." };
+  }
   if (!title) return { error: "Give the bet a title." };
   if (!proposerSide || !takerSide) {
     return { error: "Spell out both sides so there's no argument later." };
@@ -260,6 +280,13 @@ export async function postSideBetAction(
 export async function takeSideBetAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const betId = Number(formData.get("betId"));
+  if (!Number.isInteger(betId)) return;
+
+  // Only this week's bets can be taken. Without this you could wait until
+  // Monday night, with every Sunday result known, and take any open bet on
+  // the board -- it would then auto-grade in your favour. An untaken bet also
+  // stays open forever, so old weeks stay pickable indefinitely.
+  const { season, week } = currentWeek();
 
   await sql`
     UPDATE side_bets
@@ -267,11 +294,14 @@ export async function takeSideBetAction(formData: FormData): Promise<void> {
     WHERE id = ${betId}
       AND status = 'open'
       AND proposer_id <> ${user.id}
+      AND season = ${season}
+      AND week = ${week}
   `;
 
   revalidatePath("/side-bets");
   revalidatePath("/");
 }
+
 
 /** Pull back a bet nobody has taken yet. Only the person who posted it can. */
 export async function cancelSideBetAction(formData: FormData): Promise<void> {
@@ -306,8 +336,6 @@ export async function settleSideBetAction(formData: FormData): Promise<void> {
     throw new Error("Pick a winner.");
   }
 
-  // A push moves no money, so it is recorded as void. Everything else lands in
-  // 'unpaid': the result is known, but nobody has handed over any money yet.
   const status = winner === "push" ? "void" : "unpaid";
 
   await sql`
@@ -328,6 +356,40 @@ export async function settleSideBetAction(formData: FormData): Promise<void> {
   revalidatePath("/admin");
   revalidatePath("/");
 }
+
+/**
+ * Put a settled bet back to `matched` so it can be graded again.
+ *
+ * Without this a mistake is permanent: either party can settle, so somebody
+ * can book a win against themselves, and "Push" sits next to the two winner
+ * buttons, so one misclick voids a real bet with no way back.
+ *
+ * Commissioner only, deliberately -- this is the one place where a third
+ * person should be involved, and it is the whole reason the role exists.
+ * Refuses once the money has been marked paid, since reopening a settled-up
+ * bet would put a debt back on the ledger that somebody has already handed
+ * over.
+ */
+export async function reopenSideBetAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const betId = Number(formData.get("betId"));
+  if (!Number.isInteger(betId)) return;
+
+  await sql`
+    UPDATE side_bets
+    SET status = 'matched', winner = NULL,
+        settled_by = NULL, settled_at = NULL, auto_settled = FALSE
+    WHERE id = ${betId}
+      AND status IN ('unpaid', 'void')
+      AND taker_id IS NOT NULL
+  `;
+
+  revalidatePath("/side-bets");
+  revalidatePath("/ledger");
+  revalidatePath("/admin");
+  revalidatePath("/");
+}
+
 
 
 /**
@@ -367,6 +429,10 @@ export async function postLineBetAction(formData: FormData): Promise<void> {
 
   if (!title || !proposerSide || !takerSide) return;
   if (!Number.isInteger(season) || !Number.isInteger(week)) return;
+  // Board bets carry the market data that lets them auto-grade, so posting one
+  // on a finished week would settle itself from a known result.
+  const now = currentWeek();
+  if (season !== now.season || week !== now.week) return;
 
   let stakeCents: number;
   try {
@@ -503,7 +569,11 @@ export async function linkAllSleeperAction(formData: FormData): Promise<void> {
   const taken = new Map<string, number>();
   for (const u of updates) {
     if (!u.sleeperUserId) continue;
-    if (taken.has(u.sleeperUserId)) return;
+    if (taken.has(u.sleeperUserId)) {
+      // Bailing silently left the commissioner staring at an unchanged form
+      // with no idea why. Redirect with a message instead.
+      redirect("/admin?error=duplicate-sleeper-link");
+    }
     taken.set(u.sleeperUserId, u.userId);
   }
 

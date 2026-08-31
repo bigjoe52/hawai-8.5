@@ -66,7 +66,11 @@ export default async function ParlayPage({
   );
 
   const outcome = resolveParlay(parlay.legs);
+  // An all-push ticket multiplies out to exactly 1, and decimalToAmerican
+  // rejects that -- there is no American price for "even money, no action".
   const combined = parlay.legs.length > 0 ? combinedDecimalOdds(parlay.legs) : 1;
+  const combinedLabel =
+    combined > 1 ? formatAmerican(decimalToAmerican(combined)) : "—";
   const stake = parlay.stakeCents;
 
   // What the ticket would return if every remaining leg cashes.
@@ -155,10 +159,7 @@ export default async function ParlayPage({
 
           {parlay.legs.length > 0 && (
             <dl className="mt-5 grid gap-4 border-t border-white/10 pt-4 sm:grid-cols-3">
-              <Stat
-                label="Combined odds"
-                value={formatAmerican(decimalToAmerican(combined))}
-              />
+              <Stat label="Combined odds" value={combinedLabel} />
               <Stat
                 label={
                   outcome === "won"

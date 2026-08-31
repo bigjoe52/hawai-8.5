@@ -69,9 +69,15 @@ export default function BumBanner({
             </span>
           )}
         </p>
-      ) : (
+      ) : placer.isFirstWeek ? (
         <p className="mt-1.5 text-base text-white/60">
           Week 1 — no scores to hide behind yet.
+        </p>
+      ) : (
+        // Not week 1: we know who it is but not the score, which means Sleeper
+        // was unreachable. Say that, rather than claiming it is week 1.
+        <p className="mt-1.5 text-base text-white/60">
+          Last week&apos;s score unavailable right now.
         </p>
       )}
     </div>

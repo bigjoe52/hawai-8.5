@@ -14,6 +14,7 @@ import {
   markPaidAction,
   markUnpaidAction,
   settleSideBetAction,
+  reopenSideBetAction,
 } from "@/lib/actions.ts";
 import {
   Nav,
@@ -400,13 +401,34 @@ function BetCard({
               </button>
             </form>
           )}
+
+          {/* Settled to the wrong side, or Push hit by mistake? Only the
+              commissioner can reopen it, and only before it is paid. */}
+          {isAdmin && bet.status === "unpaid" && (
+            <form action={reopenSideBetAction} className="mt-2">
+              <input type="hidden" name="betId" value={bet.id} />
+              <button type="submit" className={ghostButtonClass}>
+                Wrong result — reopen
+              </button>
+            </form>
+          )}
         </div>
       )}
 
       {bet.status === "void" && (
-        <p className="mt-2 text-sm text-white/50">
-          {bet.winner === "push" ? "Push — no money moved." : "Cancelled."}
-        </p>
+        <>
+          <p className="mt-2 text-sm text-white/50">
+            {bet.winner === "push" ? "Push — no money moved." : "Cancelled."}
+          </p>
+          {isAdmin && bet.winner === "push" && (
+            <form action={reopenSideBetAction} className="mt-2">
+              <input type="hidden" name="betId" value={bet.id} />
+              <button type="submit" className={ghostButtonClass}>
+                Pushed by mistake — reopen
+              </button>
+            </form>
+          )}
+        </>
       )}
     </>
   );

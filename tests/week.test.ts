@@ -160,3 +160,18 @@ test("weekWindow clamps rather than running off the season", () => {
   assert.deepEqual(weekWindow(0), weekWindow(1));
   assert.deepEqual(weekWindow(99), weekWindow(18));
 });
+
+test("a season anchor from the wrong year is refused, not clamped", async () => {
+  // Setting LEAGUE_SEASON without LEAGUE_WEEK2_DATE used to pin the whole
+  // season to week 18 silently, because every date computed past the end and
+  // Math.min swallowed it.
+  const { execFileSync } = await import("node:child_process");
+  const script =
+    'import("./src/lib/week.ts").then(() => console.log("NO ERROR")).catch((e) => console.log(e.message))';
+  const out = execFileSync(process.execPath, ["-e", script], {
+    cwd: process.cwd(),
+    env: { ...process.env, LEAGUE_SEASON: "2027", LEAGUE_WEEK2_DATE: "" },
+    encoding: "utf8",
+  });
+  assert.match(out, /LEAGUE_SEASON is 2027 but the week-2 anchor is 2026/);
+});

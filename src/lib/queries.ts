@@ -119,24 +119,6 @@ export async function getOrCreateParlay(
   };
 }
 
-/** Every week that has a parlay, newest first -- for the history page. */
-export async function listParlayWeeks(): Promise<
-  Array<{ season: number; week: number; status: string; legCount: number }>
-> {
-  const rows = await sql`
-    SELECT p.season, p.week, p.status, COUNT(l.id)::int AS leg_count
-    FROM parlays p
-    LEFT JOIN parlay_legs l ON l.parlay_id = p.id
-    GROUP BY p.id, p.season, p.week, p.status
-    ORDER BY p.season DESC, p.week DESC
-  `;
-  return rows.map((r: any) => ({
-    season: r.season,
-    week: r.week,
-    status: r.status,
-    legCount: r.leg_count,
-  }));
-}
 
 function toSideBet(r: any): SideBet {
   return {
@@ -249,24 +231,6 @@ function toSettledBet(r: any): SettledBet {
   };
 }
 
-/** Bets a given person is involved in and still owes, or is still owed. */
-export async function listMyOpenTabs(userId: number): Promise<SideBet[]> {
-  const rows = await sql`
-    SELECT b.id, b.season, b.week, b.proposer_id, b.taker_id, b.title,
-           b.details, b.proposer_side, b.taker_side, b.stake_cents,
-           b.taker_stake_cents, b.status, b.winner,
-           b.market_kind, b.auto_settled, b.paid_at,
-           p.display_name AS proposer_name,
-           t.display_name AS taker_name
-    FROM side_bets b
-    JOIN users p ON p.id = b.proposer_id
-    LEFT JOIN users t ON t.id = b.taker_id
-    WHERE b.status = 'unpaid'
-      AND (b.proposer_id = ${userId} OR b.taker_id = ${userId})
-    ORDER BY b.season DESC, b.week DESC, b.created_at
-  `;
-  return rows.map(toSideBet);
-}
 
 export type ParlayRecord = {
   season: number;
@@ -277,8 +241,12 @@ export type ParlayRecord = {
   wonLegs: number;
   lostLegs: number;
   pendingLegs: number;
-  /** American odds of every graded leg, for the combined price. */
-  legOdds: number[];
+  /**
+   * Every leg's odds AND status. The status matters: a pushed leg drops out
+   * of the combined price rather than multiplying into it, so throwing it
+   * away here would overstate what the ticket paid.
+   */
+  legs: Array<{ oddsAmerican: number; status: LegStatus }>;
   /** Whoever's leg killed it. Usually one, occasionally more. */
   bustedBy: string[];
   placerName: string | null;
@@ -300,10 +268,12 @@ export async function listParlayHistory(): Promise<ParlayRecord[]> {
       COUNT(l.id) FILTER (WHERE l.status = 'loss')::int    AS lost_legs,
       COUNT(l.id) FILTER (WHERE l.status = 'pending')::int AS pending_legs,
       COALESCE(
-        array_agg(l.odds_american ORDER BY l.created_at)
-          FILTER (WHERE l.id IS NOT NULL),
-        ARRAY[]::int[]
-      ) AS leg_odds,
+        json_agg(
+          json_build_object('odds', l.odds_american, 'status', l.status)
+          ORDER BY l.created_at
+        ) FILTER (WHERE l.id IS NOT NULL),
+        '[]'::json
+      ) AS legs,
       COALESCE(
         array_agg(DISTINCT lu.display_name) FILTER (WHERE l.status = 'loss'),
         ARRAY[]::text[]
@@ -325,7 +295,10 @@ export async function listParlayHistory(): Promise<ParlayRecord[]> {
     wonLegs: r.won_legs,
     lostLegs: r.lost_legs,
     pendingLegs: r.pending_legs,
-    legOdds: (r.leg_odds ?? []).map(Number),
+    legs: (r.legs ?? []).map((l: any) => ({
+      oddsAmerican: Number(l.odds),
+      status: l.status as LegStatus,
+    })),
     bustedBy: r.busted_by ?? [],
     placerName: r.placer_name,
   }));
