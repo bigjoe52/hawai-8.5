@@ -1,0 +1,74 @@
+name: Backup the league
+
+# Tuesday and Friday mornings, 9am UTC (5am Eastern in season). Tuesday lands
+# a few hours after the week rolls over at 3am ET, so the week just gone is
+# captured with its results in.
+on:
+  schedule:
+    - cron: "0 9 * * 2,5"
+  workflow_dispatch: {}
+
+# Needed to push the dump back to the repo.
+permissions:
+  contents: write
+
+# Never let two runs push at once.
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      # The dump carries password hashes and everyone's betting history. On a
+      # public repo, committing it publishes all of that -- so stop here
+      # instead, loudly, rather than doing it quietly every Tuesday.
+      # Asked of the API rather than read from github.event, which is not
+      # reliably populated on a scheduled run.
+      - name: Refuse to back up into a public repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          visibility=$(gh repo view "$GITHUB_REPOSITORY" --json visibility -q .visibility)
+          echo "Repository is $visibility."
+          if [ "$visibility" != "private" ]; then
+            echo "::error::This repository is $visibility. A database dump would" \
+                 "publish password hashes and the whole ledger. Make the repo" \
+                 "private (Settings -> General -> Danger Zone) and re-run."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Dump the database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL is not set. Add it under" \
+                 "Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          node scripts/backup-db.mjs --out backups
+
+      - name: Commit it if anything changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backups
+          # A quiet week means an identical dump and nothing to commit. That is
+          # a success, not a failure.
+          if git diff --cached --quiet; then
+            echo "Nothing changed since the last backup."
+            exit 0
+          fi
+          git commit -m "Backup $(date -u +%Y-%m-%d)"
+          git push

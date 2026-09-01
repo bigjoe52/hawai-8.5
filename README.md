@@ -349,15 +349,57 @@ npm run build      # production build
 npm test           # unit tests for the betting and ledger math
 npm run db:check   # is the database reachable, and set up?
 npm run db:setup   # create tables (safe to re-run)
-npm run db:seed    # add any new members from the LEAGUE list
+npm run db:seed    # add any new members from league.roster.json
+npm run db:backup  # dump the league to backups/
 node scripts/seed-users.mjs --reset joe    # reset one person's password
-npm run db:seed -- --prune                # drop accounts no longer in LEAGUE
+npm run db:seed -- --prune                # drop accounts no longer in the roster
+npm run db:restore -- backups/2026-09-08.json           # dry run
+npm run db:restore -- backups/2026-09-08.json --confirm # put a backup back
 ```
 
 ### Adding an 11th member later
 
-Add them to the `LEAGUE` list in `scripts/seed-users.mjs`, then run
-`npm run db:seed`. Existing accounts are skipped, so nobody's password changes.
+Add them to `league.roster.json`, then run `npm run db:seed`. Existing accounts
+are skipped, so nobody's password changes.
+
+---
+
+## Backups
+
+A scheduled GitHub Action dumps the whole league to `backups/` every **Tuesday
+and Friday** and commits it. Tuesday's run lands a few hours after the week
+rolls over at 3am Eastern, so the week just gone is captured with its results
+in. You can also run it yourself from the Actions tab, or locally with
+`npm run db:backup`.
+
+Each dump is the complete contents of all four tables as JSON — a few
+kilobytes — so any single file is a full restore, not an increment. Nothing is
+written when nothing has changed, so `git log backups/` reads as a history of
+weeks that actually happened rather than a list of identical snapshots.
+
+To put one back:
+
+```bash
+npm run db:restore -- backups/2026-09-08.json            # says what it would do
+npm run db:restore -- backups/2026-09-08.json --confirm  # actually does it
+```
+
+The restore replaces everything in the four tables, runs in one transaction —
+a failure part-way leaves the database exactly as it was — and moves the id
+sequences past the restored rows so the next insert doesn't collide.
+
+### Two things to know
+
+**The repo has to be private.** A dump contains everyone's password hashes and
+the full ledger. The workflow asks GitHub whether the repository is private and
+fails loudly rather than committing if it isn't. (Actions *artifacts* on a
+public repo are downloadable by anyone too, so that route is no better.)
+
+**This is a loose backup, not point-in-time recovery.** Twice a week means you
+can lose up to half a week if something goes wrong right before a run. That is
+the right trade for a league site — but if you want a tighter net, most Postgres
+providers keep their own rolling restore window on top of this, at no extra
+work. Check what yours offers; it costs nothing to have both.
 
 ---
 
@@ -392,7 +434,9 @@ src/
     settle.ts          grades finished weeks automatically
 league.roster.json     your league (gitignored — copy the .example)
 db/schema.sql          the tables
-scripts/               setup and seeding
+scripts/               setup, seeding, backup and restore
+backups/               dated JSON dumps, committed twice a week
+.github/workflows/     the scheduled backup
 tests/                 unit tests
 ```
 

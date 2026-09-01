@@ -11,7 +11,9 @@
     "test": "node --test tests/*.test.ts",
     "db:setup": "node scripts/setup-db.mjs",
     "db:check": "node scripts/check-db.mjs",
-    "db:seed": "node scripts/seed-users.mjs"
+    "db:seed": "node scripts/seed-users.mjs",
+    "db:backup": "node scripts/backup-db.mjs",
+    "db:restore": "node scripts/restore-db.mjs"
   },
   "dependencies": {
     "next": "^15.1.6",
