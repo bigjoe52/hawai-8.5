@@ -396,10 +396,38 @@ fails loudly rather than committing if it isn't. (Actions *artifacts* on a
 public repo are downloadable by anyone too, so that route is no better.)
 
 **This is a loose backup, not point-in-time recovery.** Twice a week means you
-can lose up to half a week if something goes wrong right before a run. That is
-the right trade for a league site — but if you want a tighter net, most Postgres
-providers keep their own rolling restore window on top of this, at no extra
-work. Check what yours offers; it costs nothing to have both.
+can lose up to half a week if something goes wrong right before a run. See the
+next section for what covers the gap.
+
+### How this fits with Neon's own restore
+
+Neon keeps a rolling change history and can rewind a branch to any moment
+inside it, down to the millisecond — no setup, already on. The catch is the
+size of the window: **the Free plan keeps 6 hours**, paid plans default to a
+day, and the Scale plan goes to 30. So the two cover different accidents:
+
+| | Neon's instant restore | These backups |
+| --- | --- | --- |
+| Someone deletes a week's bets and you notice at lunch | ✅ rewind to this morning | ✅ but you lose since the last dump |
+| You spot on Thursday that Tuesday's settlement was wrong | ❌ outside a 6-hour window | ✅ Tuesday's dump is right there |
+| Neon account lapses, project deleted, billing problem | ❌ gone with the project | ✅ it's in git, on GitHub |
+| Restore speed | seconds, whole branch | a minute, one command |
+
+Neon's own docs say the same thing: their history is usually the faster fix,
+and you keep your own dumps for off-platform redundancy and for anything older
+than the window. Having both costs nothing, so have both.
+
+**Worth doing in the Neon console:** check your history window under the
+project's settings, and raise it if you're on a paid plan — it's the difference
+between six hours and a month of instant rewind.
+
+**Also worth setting:** Neon shows two connection strings, pooled and direct.
+Add the direct one as a `DATABASE_URL_UNPOOLED` secret alongside `DATABASE_URL`
+and the backup will use it. The dump reads all four tables from a single
+snapshot, and a pooler in transaction mode can hand each statement to a
+different backend — which is how you get a dump whose side bets reference a
+user the same dump doesn't contain. It still works without this, over the
+pooler; the direct string just makes the snapshot airtight.
 
 ---
 

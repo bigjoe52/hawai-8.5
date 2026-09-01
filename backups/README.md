@@ -18,3 +18,10 @@ npm run db:restore -- backups/2026-09-08.json --confirm  # actually do it
 **These files contain password hashes and the full ledger.** They are only
 safe here because the repository is private, and the workflow refuses to run
 if it ever stops being private.
+
+These sit alongside Neon's own instant restore rather than replacing it. Neon
+rewinds a branch to any moment in its history window — 6 hours on the Free
+plan — which is the faster fix for something you notice the same day. These
+dumps are what you reach for when the mistake is older than that window, or
+when the problem is with the Neon project itself. See the Backups section of
+the main README.

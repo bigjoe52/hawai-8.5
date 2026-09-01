@@ -175,3 +175,52 @@ test("prefixed resolution is deterministic with several matches", () => {
   // Same answer regardless of key insertion order.
   assert.equal(resolveDatabaseUrl({ A_DATABASE_URL: env.A_DATABASE_URL, B_DATABASE_URL: env.B_DATABASE_URL })?.source, first);
 });
+
+/* ---------------------------------------------------------------------------
+ * preferDirect: the backup wants the opposite preference to the website.
+ * A pooler in transaction mode can hand each statement to a different backend,
+ * which would break the single snapshot a dump reads from.
+ * ------------------------------------------------------------------------ */
+
+const POOLED = "postgresql://u:p@ep-cool-name-pooler.us-east-2.aws.neon.tech/db";
+const DIRECT = "postgresql://u:p@ep-cool-name.us-east-2.aws.neon.tech/db";
+
+test("preferDirect takes the unpooled string even when a pooled one is set", () => {
+  const r = resolveDatabaseUrl(
+    { DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT },
+    { preferDirect: true },
+  );
+  assert.equal(r?.url, DIRECT);
+  assert.equal(r?.isPooled, false);
+});
+
+test("preferDirect finds a prefixed unpooled name too", () => {
+  const r = resolveDatabaseUrl(
+    { DATABASE_URL: POOLED, STORAGE_DATABASE_URL_UNPOOLED: DIRECT },
+    { preferDirect: true },
+  );
+  assert.equal(r?.url, DIRECT);
+  assert.equal(r?.isPooled, false);
+});
+
+test("preferDirect falls back to the pooled string rather than failing", () => {
+  // Plenty of setups only ever set DATABASE_URL. A pooled dump still works;
+  // the script says so rather than refusing to back anything up.
+  const r = resolveDatabaseUrl({ DATABASE_URL: POOLED }, { preferDirect: true });
+  assert.equal(r?.url, POOLED);
+  assert.equal(r?.isPooled, true);
+});
+
+test("preferDirect ignores a placeholder unpooled string", () => {
+  const r = resolveDatabaseUrl(
+    { DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: "postgresql://user:password@host/dbname" },
+    { preferDirect: true },
+  );
+  assert.equal(r?.url, POOLED);
+});
+
+test("the website's default is unchanged: pooled still wins", () => {
+  const r = resolveDatabaseUrl({ DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT });
+  assert.equal(r?.url, POOLED);
+  assert.equal(r?.isPooled, true);
+});

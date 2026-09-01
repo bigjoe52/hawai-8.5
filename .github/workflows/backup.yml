@@ -48,12 +48,17 @@ jobs:
 
       - run: npm ci
 
+      # DATABASE_URL_UNPOOLED is optional but preferred: the dump reads every
+      # table from one snapshot, and a pooler in transaction mode can hand
+      # each statement to a different backend. Neon shows both strings on the
+      # project dashboard. Without it the dump still runs, over the pooler.
       - name: Dump the database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
         run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL is not set. Add it under" \
+          if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_URL_UNPOOLED" ]; then
+            echo "::error::No connection string. Add DATABASE_URL under" \
                  "Settings -> Secrets and variables -> Actions."
             exit 1
           fi

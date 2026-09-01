@@ -82,7 +82,27 @@ function findBySuffix(
 
 export function resolveDatabaseUrl(
   env: Record<string, string | undefined> = process.env,
+  options: { preferDirect?: boolean } = {},
 ): ResolvedUrl | null {
+  // A few jobs want the opposite preference. A backup reads every table in
+  // one transaction, and a pooler in transaction mode can hand each statement
+  // to a different backend, which would break the snapshot. Neon says the
+  // same: don't dump over a pooled connection string.
+  if (options.preferDirect) {
+    for (const name of UNPOOLED_VARS) {
+      const value = env[name];
+      if (value && !isPlaceholder(value)) {
+        return { url: value.trim(), source: name, isPooled: false };
+      }
+    }
+    const direct = findBySuffix(env, UNPOOLED_VARS);
+    if (direct) {
+      return { url: direct.value, source: direct.name, isPooled: false };
+    }
+    // No direct string set. Fall through: a pooled one still works, and the
+    // caller can say so.
+  }
+
   // 1. Exact standard names, pooled first.
   for (const name of POOLED_VARS) {
     const value = env[name];

@@ -42,10 +42,19 @@ const value = (name, fallback) => {
 /** FK order: parents first, so a restore can replay it top to bottom. */
 const TABLES = ["users", "parlays", "parlay_legs", "side_bets"];
 
-const resolved = resolveDatabaseUrl();
+// A pooler in transaction mode can hand each statement to a different backend,
+// which would defeat the single-snapshot read below. Neon's own advice is not
+// to dump over a pooled connection string.
+const resolved = resolveDatabaseUrl(process.env, { preferDirect: true });
 if (!resolved) {
   console.error(`\n${missingUrlMessage()}\n`);
   process.exit(1);
+}
+if (resolved.isPooled) {
+  console.error(
+    `  note: dumping over the pooled connection (${resolved.source}). It works,\n` +
+    `  but setting DATABASE_URL_UNPOOLED gives a cleaner snapshot.`,
+  );
 }
 
 /** The most recent dump already in `dir`, or null if there are none. */
@@ -63,6 +72,13 @@ function latestBackup(dir) {
 const { sql, client } = await connect(resolved.url);
 
 try {
+  // Read all four tables from ONE snapshot. Without this each SELECT is its
+  // own implicit transaction, so a bet placed midway through could be dumped
+  // into side_bets while the user who placed it missed the users read -- a
+  // backup that cannot be restored because its foreign keys don't resolve.
+  // READ ONLY says out loud that this never writes.
+  await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+
   const dump = {
     format: 1,
     takenAt: new Date().toISOString(),
@@ -87,6 +103,8 @@ try {
     const rows = (await client.query(`SELECT * FROM ${table} ORDER BY id`)).rows;
     dump.tables[table] = { columns, rows };
   }
+
+  await client.query("COMMIT");
 
   const json = JSON.stringify(dump, null, 2);
 
